@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent 完整流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a2a2a,#0f2929);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#00e5a0,#00b8d4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#00e5a0,#00b8d4);color:#000}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(0,229,160,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#00e5a0;font-weight:bold}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1)}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(0,229,160,.4);box-shadow:0 0 25px rgba(0,229,160,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(0,229,160,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#00e5a0,#00b8d4);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0;color:#000}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.tok{display:inline-flex;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;font-size:.85rem;animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tok-in{background:rgba(0,229,160,.15);border:1px solid rgba(0,229,160,.4);color:#00e5a0}
+.tok-em{background:rgba(0,184,212,.15);border:1px solid rgba(0,184,212,.4);color:#00b8d4}
+.tok-out{background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);color:#c864ff}
+.tok-id{background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);color:#ffa500}
+.tok-warn{background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);color:#ff6b6b}
+.note{background:rgba(0,229,160,.05);border-left:3px solid rgba(0,229,160,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>AI Agent 完整架构</h1>
+<p class="subtitle">从 LLM 到自主行动 — Agent 的核心循环与关键组件</p>
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Cursor（AI 编程）、Devin（AI 程序员）、Amazon Q Developer（云开发助手）都是 Agent 的典型落地。它们能自主读代码、写代码、运行测试、修复 bug——完整的 ReAct 循环。
+</div>
+
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">12</span></div>
+<div id="pipeline"></div>
+
+<!-- ===== Agent Patterns Section ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">Agent 设计模式</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">从简单到复杂，不同场景选择不同架构</p>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:30px">
+<!-- ReAct -->
+<div style="flex:1;min-width:260px;max-width:340px;background:rgba(0,229,160,.05);border:2px solid rgba(0,229,160,.3);border-radius:14px;padding:22px;position:relative">
+<div style="position:absolute;top:-10px;right:15px;background:#00e5a0;color:#000;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:10px">最常用</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Claude 的 Computer Use 和 Google 的 Project Mariner 展示了 Agent 操作电脑的能力——点击、打字、截屏理解界面。这是从"对话 AI"到"行动 AI"的标志性转变。
+</div>
+
+<div style="text-align:center;font-weight:700;font-size:1.05rem;color:#00e5a0;margin-bottom:12px">ReAct 模式</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:12px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.75rem">
+<div style="color:#ffa500">Thought: 我需要查询天气</div>
+<div style="color:#00b8d4">Action: search("北京天气")</div>
+<div style="color:#00e5a0">Observation: 晴，25°C</div>
+<div style="color:#ffa500">Thought: 已获得信息</div>
+<div style="color:#c864ff">Answer: 北京今天晴...</div>
+</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 思考-行动-观察循环</div>
+<div>✅ 可解释性强</div>
+<div>✅ 适合大多数场景</div>
+</div>
+</div>
+
+<!-- Plan & Execute -->
+<div style="flex:1;min-width:260px;max-width:340px;background:rgba(0,184,212,.05);border:1px solid rgba(0,184,212,.25);border-radius:14px;padding:22px">
+<div style="text-align:center;font-weight:700;font-size:1.05rem;color:#00b8d4;margin-bottom:12px">Plan & Execute</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:12px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.75rem">
+<div style="color:#00b8d4">Plan: [步骤1, 步骤2, 步骤3]</div>
+<div style="color:#888">↓</div>
+<div style="color:#00e5a0">Execute: 逐步执行</div>
+<div style="color:#888">↓</div>
+<div style="color:#ffa500">Replan: 根据结果调整</div>
+</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 适合复杂多步任务</div>
+<div>✅ 全局规划能力</div>
+<div>⚠️ 规划可能过时需重规划</div>
+</div>
+</div>
+
+<!-- Multi-Agent -->
+<div style="flex:1;min-width:260px;max-width:340px;background:rgba(200,100,255,.05);border:1px solid rgba(200,100,255,.25);border-radius:14px;padding:22px">
+<div style="text-align:center;font-weight:700;font-size:1.05rem;color:#c864ff;margin-bottom:12px">Multi-Agent 协作</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:12px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.75rem">
+<div style="color:#c864ff">Orchestrator 分配任务</div>
+<div style="color:#888">↓</div>
+<div style="display:flex;gap:6px">
+<div style="color:#00e5a0">Agent A</div>
+<div style="color:#00b8d4">Agent B</div>
+<div style="color:#ffa500">Agent C</div>
+</div>
+<div style="color:#888">↓</div>
+<div style="color:#c864ff">汇总结果</div>
+</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 专业分工，各司其职</div>
+<div>✅ 可并行执行</div>
+<div>⚠️ 协调开销大</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ===== Frameworks Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">Agent 框架与生态</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">主流框架对比与选型指南</p>
+
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:30px;overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">框架</th>
+<th style="padding:10px;text-align:center;color:#00e5a0">核心特点</th>
+<th style="padding:10px;text-align:center;color:#ffa500">适用场景</th>
+<th style="padding:10px;text-align:center;color:#888">语言</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">LangGraph</td>
+<td style="padding:10px;text-align:center">图结构工作流 + 状态管理</td>
+<td style="padding:10px;text-align:center;color:#666">复杂多步 Agent</td>
+<td style="padding:10px;text-align:center;color:#666">Python/JS</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">CrewAI</td>
+<td style="padding:10px;text-align:center">角色扮演 + 多 Agent 协作</td>
+<td style="padding:10px;text-align:center;color:#666">团队协作任务</td>
+<td style="padding:10px;text-align:center;color:#666">Python</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">AutoGen</td>
+<td style="padding:10px;text-align:center">对话式多 Agent + 人机协作</td>
+<td style="padding:10px;text-align:center;color:#666">研究/代码生成</td>
+<td style="padding:10px;text-align:center;color:#666">Python</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">Strands Agents</td>
+<td style="padding:10px;text-align:center">模型驱动循环 + 工具原生</td>
+<td style="padding:10px;text-align:center;color:#666">AWS 生态 Agent</td>
+<td style="padding:10px;text-align:center;color:#666">Python</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">OpenAI Agents SDK</td>
+<td style="padding:10px;text-align:center">Handoff + Guardrails 原生</td>
+<td style="padding:10px;text-align:center;color:#666">OpenAI 生态</td>
+<td style="padding:10px;text-align:center;color:#666">Python</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa;font-weight:600">Dify / Coze</td>
+<td style="padding:10px;text-align:center">低代码可视化编排</td>
+<td style="padding:10px;text-align:center;color:#666">快速原型/非技术用户</td>
+<td style="padding:10px;text-align:center;color:#666">GUI</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>OpenAI 的 Swarm、LangGraph、CrewAI、Amazon Bedrock Agents 是主流 Agent 框架。2025 年 Agent 被认为是 AI 最大的商业化方向——Salesforce、ServiceNow 都在重注此赛道。
+</div>
+
+
+<!-- MCP Protocol -->
+<div style="background:rgba(0,229,160,.03);border:1px solid rgba(0,229,160,.2);border-radius:14px;padding:24px;margin-bottom:30px">
+<div style="font-weight:700;color:#00e5a0;margin-bottom:16px;font-size:1rem;text-align:center">🔌 MCP (Model Context Protocol)</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:16px">
+<div style="font-size:.9rem;color:#00b8d4;font-weight:600;margin-bottom:8px">是什么？</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">Anthropic 提出的开放协议<br>标准化 LLM 与外部工具的连接<br>类似 USB-C 统一接口</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:16px">
+<div style="font-size:.9rem;color:#ffa500;font-weight:600;margin-bottom:8px">核心概念</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">Tools: 可执行的函数<br>Resources: 可读取的数据<br>Prompts: 可复用的模板<br>Server ↔ Client 架构</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:16px">
+<div style="font-size:.9rem;color:#00e5a0;font-weight:600;margin-bottom:8px">为什么重要？</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">一次开发，处处可用<br>Agent 工具生态标准化<br>IDE/App 统一集成方式</div>
+</div>
+</div>
+</div>
+
+<!-- Challenges -->
+<div style="background:rgba(255,107,107,.03);border:1px solid rgba(255,107,107,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:16px;font-size:1rem;text-align:center">⚠️ Agent 当前挑战</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#ff6b6b;font-size:.85rem;margin-bottom:6px">🎯 可靠性</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">多步推理容易累积错误<br>工具调用可能失败<br>需要 fallback 和重试机制</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#ffa500;font-size:.85rem;margin-bottom:6px">🔒 安全性</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">Prompt injection 攻击<br>工具权限控制<br>敏感操作需人工确认</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#00b8d4;font-size:.85rem;margin-bottom:6px">💰 成本</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">多轮调用 token 消耗大<br>工具调用增加延迟<br>需要成本/效果平衡</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#c864ff;font-size:.85rem;margin-bottom:6px">🔍 可观测性</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">调试复杂链路困难<br>需要 trace/logging<br>LangSmith, Arize 等工具</div>
+</div>
+</div>
+</div>
+</div>
+
+
+<!-- ===== 核心概念深入 Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">🧠 核心概念深入</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">用费曼方法理解 Agent 的本质 — 如果不能简单解释，就是还没真正理解</p>
+
+<div style="display:flex;flex-direction:column;gap:20px">
+
+<!-- Concept 1: Agent vs Chatbot -->
+<div style="background:rgba(0,229,160,.04);border:1px solid rgba(0,229,160,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#00e5a0;margin-bottom:14px;font-size:1rem">💡 Agent 和 Chatbot 到底有什么区别？</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:16px">
+<div style="font-size:.9rem;color:#ff6b6b;font-weight:600;margin-bottom:10px">🤖 Chatbot = 答录机</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.7">你问一句，它答一句。<br>没有主动性，不会自己去做事。<br>就像打电话给客服热线：<br><span style="color:#888;font-style:italic">"按1查余额，按2转人工..."</span><br>它只能在预设的轨道上运行。</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:16px">
+<div style="font-size:.9rem;color:#00e5a0;font-weight:600;margin-bottom:10px">🦸 Agent = 有主动性的员工</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.7">你给一个目标，它自己想办法完成。<br>会主动查资料、用工具、处理异常。<br>就像交代实习生一个任务：<br><span style="color:#888;font-style:italic">"帮我调研竞品并写份报告"</span><br>它会自己规划步骤、搜索、整理、输出。</div>
+</div>
+</div>
+<div style="background:rgba(0,229,160,.06);border-left:3px solid rgba(0,229,160,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:14px;font-size:.82rem;color:#aaa;line-height:1.6">
+<span style="color:#00e5a0;font-weight:600">本质区别：</span>Chatbot 是<span style="color:#00b8d4">被动响应</span>（Reactive），Agent 是<span style="color:#00e5a0">主动行动</span>（Proactive）。Agent 拥有「目标 → 规划 → 执行 → 反思」的完整闭环，而 Chatbot 只有「输入 → 输出」的单次映射。
+</div>
+</div>
+
+<!-- Concept 2: ReAct Loop -->
+<div style="background:rgba(0,184,212,.04);border:1px solid rgba(0,184,212,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#00b8d4;margin-bottom:14px;font-size:1rem">🔄 ReAct 循环：Agent 的思考方式</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7;margin-bottom:14px">ReAct = <span style="color:#ffa500">Re</span>asoning + <span style="color:#00e5a0">Act</span>ion。核心思想很简单：<strong style="color:#fff">先想清楚，再动手，看结果，再想</strong>。就像一个靠谱的人解决问题的方式。</div>
+<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-bottom:14px">
+<div style="display:flex;flex-direction:column;gap:8px;font-size:.82rem">
+<div style="display:flex;align-items:flex-start;gap:10px"><span style="color:#ffa500;font-weight:700;min-width:70px">Think 🧠</span><span style="color:#aaa">"用户要查北京天气，我应该调用天气 API"</span></div>
+<div style="display:flex;align-items:flex-start;gap:10px"><span style="color:#00e5a0;font-weight:700;min-width:70px">Act 🔧</span><span style="color:#aaa">调用 weather_api("北京")</span></div>
+<div style="display:flex;align-items:flex-start;gap:10px"><span style="color:#00b8d4;font-weight:700;min-width:70px">Observe 👁</span><span style="color:#aaa">返回结果：晴天，25°C，湿度 40%</span></div>
+<div style="display:flex;align-items:flex-start;gap:10px"><span style="color:#ffa500;font-weight:700;min-width:70px">Think 🧠</span><span style="color:#aaa">"信息足够了，可以回答用户了"</span></div>
+<div style="display:flex;align-items:flex-start;gap:10px"><span style="color:#c864ff;font-weight:700;min-width:70px">Answer ✅</span><span style="color:#aaa">"北京今天晴天，气温 25°C..."</span></div>
+</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<span style="color:#00b8d4;font-weight:600">为什么有效？</span> 因为它模拟了人类解决问题的自然过程。没有人会不思考就行动，也没有人会行动后不看结果。ReAct 让 LLM 也遵循这个常识。
+</div>
+</div>
+
+<!-- Concept 3: Tool Calling -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:14px;font-size:1rem">🔧 工具调用的真相：LLM 并不"使用"工具</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7;margin-bottom:14px">这是最容易误解的概念。LLM <span style="color:#ff6b6b">不能</span>真的执行代码或调用 API。它做的事情本质上只有一件：<span style="color:#ffa500;font-weight:600">生成文本</span>。</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:14px">
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:16px">
+<div style="font-size:.85rem;color:#ffa500;font-weight:600;margin-bottom:8px">实际发生了什么？</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.7">
+<div style="margin-bottom:4px"><span style="color:#00e5a0">1.</span> LLM 看到工具描述（JSON Schema）</div>
+<div style="margin-bottom:4px"><span style="color:#00e5a0">2.</span> LLM 生成结构化文本：<code style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:3px;font-size:.75rem">{"tool":"search", "query":"..."}</code></div>
+<div style="margin-bottom:4px"><span style="color:#00e5a0">3.</span> <span style="color:#ff6b6b">外部系统</span>解析这段文本并真正执行</div>
+<div><span style="color:#00e5a0">4.</span> 执行结果作为新文本送回给 LLM</div>
+</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:16px">
+<div style="font-size:.85rem;color:#00b8d4;font-weight:600;margin-bottom:8px">类比理解</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.7">LLM 就像一个<span style="color:#00b8d4">只能写字的人</span>。<br><br>它不能亲自去图书馆查书，但它可以写一张纸条："请帮我查《XX》第3章"。<br><br>有人（系统）拿着纸条去查，把结果写回来给它看。<br><br>它再根据结果写下一张纸条或最终答案。</div>
+</div>
+</div>
+<div style="background:rgba(255,165,0,.06);border-left:3px solid rgba(255,165,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;font-size:.82rem;color:#aaa">
+<span style="color:#ffa500;font-weight:600">关键洞察：</span>Function Calling 的质量取决于两件事 — ① 工具描述写得多清晰（LLM 才知道何时用）② 参数 Schema 定义多准确（LLM 才能生成正确格式）
+</div>
+</div>
+
+<!-- Concept 4: Memory Systems -->
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:14px;font-size:1rem">🧩 记忆系统：为什么 Agent 需要"记忆"？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7;margin-bottom:14px">想象一个每隔 5 分钟就失忆的员工 — 这就是没有记忆系统的 Agent。Context Window 有限（比如 128K tokens），超出就会"忘记"早期内容。</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px">
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#00b8d4;font-weight:600;margin-bottom:8px">📋 工作记忆</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">= 当前对话上下文<br>类比：桌上摊开的文件<br>容量有限，用完就没了</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#00e5a0;font-weight:600;margin-bottom:8px">📁 短期记忆</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">= 任务内的摘要/笔记<br>类比：便签纸上的要点<br>压缩存储，按需检索</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#c864ff;font-weight:600;margin-bottom:8px">🗄️ 长期记忆</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">= 跨会话持久化存储<br>类比：档案柜/笔记本<br>Vector DB / KV Store</div>
+</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<span style="color:#c864ff;font-weight:600">为什么重要？</span> 没有记忆，Agent 无法处理需要多次交互的复杂任务，无法记住用户偏好，无法从过去的错误中学习。记忆是 Agent 从"工具"进化为"助手"的关键。
+</div>
+</div>
+
+</div>
+</div>
+
+
+
+<!-- ===== 替代方案与优化 Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">⚡ 替代方案与优化</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">不是所有问题都需要 Agent — 选对架构比选对模型更重要</p>
+
+<div style="display:flex;flex-direction:column;gap:20px">
+
+<!-- Single vs Multi Agent -->
+<div style="background:rgba(0,229,160,.04);border:1px solid rgba(0,229,160,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#00e5a0;margin-bottom:14px;font-size:1rem">🏗️ Single Agent vs Multi-Agent：如何选择？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7;margin-bottom:14px">核心原则：<span style="color:#00e5a0;font-weight:600">能用一个 Agent 解决的，就不要用多个</span>。Multi-Agent 带来的协调复杂度往往被低估。</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:14px">
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:16px">
+<div style="font-size:.85rem;color:#00e5a0;font-weight:600;margin-bottom:10px">✅ 用 Single Agent 当...</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.8">
+• 任务可以线性分解<br>
+• 所需工具 < 15 个<br>
+• 不需要不同"专业视角"<br>
+• 延迟敏感（每多一个 Agent = 多一次 LLM 调用）<br>
+• 团队刚开始做 Agent（先跑通再优化）
+</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:16px">
+<div style="font-size:.85rem;color:#c864ff;font-weight:600;margin-bottom:10px">✅ 用 Multi-Agent 当...</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.8">
+• 任务需要不同领域专业知识<br>
+• 子任务可以并行执行<br>
+• 需要"辩论/审核"机制提高质量<br>
+• 单个 prompt 已经过长（> 4000 tokens）<br>
+• 需要不同权限级别的隔离
+</div>
+</div>
+</div>
+</div>
+
+<!-- Orchestration Patterns -->
+<div style="background:rgba(0,184,212,.04);border:1px solid rgba(0,184,212,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#00b8d4;margin-bottom:14px;font-size:1rem">🎭 编排模式：Agent 之间如何协作？</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:14px">
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#00e5a0;font-weight:600;margin-bottom:6px">📏 顺序执行</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">A → B → C<br>前一个的输出是后一个的输入<br><span style="color:#666">适合：流水线式处理</span></div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#00b8d4;font-weight:600;margin-bottom:6px">⚡ 并行执行</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">A + B + C 同时运行<br>最后汇总结果<br><span style="color:#666">适合：独立子任务</span></div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#ffa500;font-weight:600;margin-bottom:6px">🏛️ 层级式</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">Manager 分配任务给 Workers<br>Workers 汇报结果给 Manager<br><span style="color:#666">适合：复杂项目管理</span></div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#c864ff;font-weight:600;margin-bottom:6px">💬 辩论式</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">多个 Agent 各抒己见<br>通过讨论达成共识<br><span style="color:#666">适合：需要多角度审核</span></div>
+</div>
+</div>
+<div style="background:rgba(0,184,212,.06);border-left:3px solid rgba(0,184,212,.4);padding:10px 14px;border-radius:0 8px 8px 0;font-size:.82rem;color:#aaa">
+<span style="color:#00b8d4;font-weight:600">实践建议：</span>从顺序执行开始，只在确实需要时才引入并行或层级。过早优化编排模式是 Agent 项目失败的常见原因。
+</div>
+</div>
+
+<!-- Agent Evaluation -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:14px;font-size:1rem">📊 Agent 评估：怎么衡量 Agent 好不好？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7;margin-bottom:14px">不能只看"感觉好不好用"。Agent 评估需要量化指标，就像评估员工绩效一样。</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px">
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px;border-left:3px solid #00e5a0">
+<div style="font-size:.85rem;color:#00e5a0;font-weight:600;margin-bottom:6px">🎯 任务完成率</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">给定 N 个任务<br>成功完成了多少？<br>部分完成算多少分？</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px;border-left:3px solid #00b8d4">
+<div style="font-size:.85rem;color:#00b8d4;font-weight:600;margin-bottom:6px">⚡ 效率</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">用了多少步完成？<br>消耗了多少 tokens？<br>有没有无效循环？</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px;border-left:3px solid #ff6b6b">
+<div style="font-size:.85rem;color:#ff6b6b;font-weight:600;margin-bottom:6px">🛡️ 安全性</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">有没有越权操作？<br>有没有泄露信息？<br>有没有被 injection？</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px;border-left:3px solid #ffa500">
+<div style="font-size:.85rem;color:#ffa500;font-weight:600;margin-bottom:6px">😊 用户满意度</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">结果质量如何？<br>交互体验流畅吗？<br>等待时间可接受吗？</div>
+</div>
+</div>
+</div>
+
+<!-- Cost Optimization -->
+<div style="background:rgba(255,107,107,.04);border:1px solid rgba(255,107,107,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:14px;font-size:1rem">💰 成本优化：Agent 循环中的 Token 经济学</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7;margin-bottom:14px">Agent 每循环一次就是一次 LLM 调用。10 步循环 = 10 次 API 调用。如果每次都带完整历史，token 消耗呈<span style="color:#ff6b6b;font-weight:600">指数增长</span>。</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-bottom:14px">
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#00e5a0;font-weight:600;margin-bottom:8px">✂️ 减少每轮 Token</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.7">
+• 压缩历史：只保留摘要而非原文<br>
+• 工具结果截断：只返回关键信息<br>
+• 滑动窗口：只保留最近 N 轮<br>
+• 按需加载：不是每轮都带所有工具描述
+</div>
+</div>
+<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#ffa500;font-weight:600;margin-bottom:8px">🎯 减少循环次数</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.7">
+• 更好的规划 = 更少的试错<br>
+• 批量工具调用（一次调多个）<br>
+• 设置最大步数限制<br>
+• 用小模型做简单判断，大模型做复杂推理
+</div>
+</div>
+</div>
+<div style="background:rgba(255,107,107,.06);border-left:3px solid rgba(255,107,107,.4);padding:10px 14px;border-radius:0 8px 8px 0;font-size:.82rem;color:#aaa">
+<span style="color:#ff6b6b;font-weight:600">经验法则：</span>一个 Agent 任务的成本 ≈ 平均循环次数 × 每轮 token 数 × 模型单价。优化任何一个因子都能显著降低成本。GPT-4o-mini 做路由，Claude 做推理，是常见的混合策略。
+</div>
+</div>
+
+</div>
+</div>
+
+
+
+<!-- ===== 常见问题 FAQ Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">❓ 常见问题</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">Agent 开发中最常遇到的困惑与解答</p>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+
+<!-- FAQ 1 -->
+<div style="background:rgba(255,107,107,.04);border:1px solid rgba(255,107,107,.15);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:10px;font-size:.95rem">Q: 如何防止 Agent 陷入无限循环？</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:8px"><span style="color:#00e5a0;font-weight:600">为什么会发生：</span>Agent 反复尝试同一个失败的策略，或者 LLM 无法判断任务已完成，持续生成新的 action。</div>
+<div><span style="color:#ffa500;font-weight:600">解决方案：</span></div>
+<div style="padding-left:12px">
+• <span style="color:#00b8d4">硬限制：</span>设置最大步数（如 max_steps=25），超过直接终止<br>
+• <span style="color:#00b8d4">重复检测：</span>如果连续 3 次调用相同工具+相同参数，强制退出<br>
+• <span style="color:#00b8d4">递减预算：</span>每步消耗"行动点数"，用完必须总结并停止<br>
+• <span style="color:#00b8d4">反思机制：</span>每 N 步强制 Agent 回顾："我是否在重复？目标是否可达？"
+</div>
+</div>
+</div>
+
+<!-- FAQ 2 -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.15);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:.95rem">Q: 工具调用失败了怎么优雅处理？</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:8px"><span style="color:#00e5a0;font-weight:600">核心原则：</span>失败是正常的，Agent 应该像人一样处理失败 — 不是崩溃，而是换个方法。</div>
+<div><span style="color:#ffa500;font-weight:600">分层处理策略：</span></div>
+<div style="padding-left:12px">
+• <span style="color:#00b8d4">Level 1 - 重试：</span>网络超时等瞬时错误，等待后重试（指数退避）<br>
+• <span style="color:#00b8d4">Level 2 - 换参数：</span>参数错误，让 LLM 分析错误信息并修正参数<br>
+• <span style="color:#00b8d4">Level 3 - 换工具：</span>该工具不可用，尝试用其他工具达到相同目的<br>
+• <span style="color:#00b8d4">Level 4 - 换策略：</span>整个方向不对，回到规划阶段重新思考<br>
+• <span style="color:#00b8d4">Level 5 - 求助人类：</span>所有自动方案都失败，清晰地告知用户卡在哪里
+</div>
+</div>
+</div>
+
+<!-- FAQ 3 -->
+<div style="background:rgba(0,229,160,.04);border:1px solid rgba(0,229,160,.15);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#00e5a0;margin-bottom:10px;font-size:.95rem">Q: 什么时候 Agent 是杀鸡用牛刀？什么时候必须用？</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="color:#ff6b6b;font-weight:600;margin-bottom:6px">🚫 不需要 Agent 的场景</div>
+<div style="font-size:.78rem;line-height:1.7">
+• 固定流程，无需判断（用 workflow/规则引擎）<br>
+• 单次问答，无需工具（用普通 LLM 调用）<br>
+• 输入输出格式固定（用 structured output）<br>
+• 对延迟极度敏感（< 1s 响应要求）
+</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="color:#00e5a0;font-weight:600;margin-bottom:6px">✅ 必须用 Agent 的场景</div>
+<div style="font-size:.78rem;line-height:1.7">
+• 任务步骤不确定，需要动态决策<br>
+• 需要与多个外部系统交互<br>
+• 需要根据中间结果调整策略<br>
+• 任务复杂度超出单次 prompt 能力
+</div>
+</div>
+</div>
+<div style="margin-top:10px;background:rgba(0,229,160,.06);border-left:3px solid rgba(0,229,160,.4);padding:8px 12px;border-radius:0 8px 8px 0;font-size:.78rem;color:#aaa">
+<span style="color:#00e5a0;font-weight:600">判断标准：</span>如果你能用 if-else 写出所有分支，就不需要 Agent。如果你说"看情况"，那可能需要 Agent。
+</div>
+</div>
+</div>
+
+<!-- FAQ 4 -->
+<div style="background:rgba(0,184,212,.04);border:1px solid rgba(0,184,212,.15);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#00b8d4;margin-bottom:10px;font-size:.95rem">Q: 如何调试复杂的 Agent 行为？</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:8px"><span style="color:#00e5a0;font-weight:600">难点：</span>Agent 的行为是非确定性的（同样输入可能不同输出），且链路长（多步推理 + 多次工具调用），传统 debugger 无法使用。</div>
+<div><span style="color:#00b8d4;font-weight:600">调试工具箱：</span></div>
+<div style="padding-left:12px">
+• <span style="color:#ffa500">Trace 追踪：</span>记录每一步的 input/output/思考过程（LangSmith, Arize Phoenix）<br>
+• <span style="color:#ffa500">Replay 回放：</span>保存完整对话历史，可以从任意步骤重新开始<br>
+• <span style="color:#ffa500">断点调试：</span>在关键决策点暂停，检查 Agent 的"思考"是否合理<br>
+• <span style="color:#ffa500">对比测试：</span>同一任务跑多次，对比不同路径，找出不稳定的环节<br>
+• <span style="color:#ffa500">简化复现：</span>把复杂场景拆成最小可复现的子问题
+</div>
+</div>
+</div>
+
+<!-- FAQ 5 -->
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.15);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:10px;font-size:.95rem">Q: MCP、Function Calling、Tool Use 有什么区别？</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:10px">这三个概念经常混用，但它们处于不同层次：</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px;margin-bottom:10px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;font-size:.78rem">
+<div>
+<div style="color:#ffa500;font-weight:600;margin-bottom:4px">Function Calling</div>
+<div style="color:#aaa;line-height:1.6">= LLM 的能力<br>模型生成结构化的函数调用请求<br>OpenAI/Anthropic 各有自己的格式<br><span style="color:#666">类比：员工会写工单</span></div>
+</div>
+<div>
+<div style="color:#00e5a0;font-weight:600;margin-bottom:4px">Tool Use</div>
+<div style="color:#aaa;line-height:1.6">= 更广的概念<br>包含 Function Calling + 执行 + 返回结果<br>是 Agent 框架层面的抽象<br><span style="color:#666">类比：整个工单处理流程</span></div>
+</div>
+<div>
+<div style="color:#00b8d4;font-weight:600;margin-bottom:4px">MCP (协议)</div>
+<div style="color:#aaa;line-height:1.6">= 标准化连接协议<br>定义 Agent 如何发现和调用工具<br>跨框架、跨应用的统一接口<br><span style="color:#666">类比：USB-C 统一充电口</span></div>
+</div>
+</div>
+</div>
+<div style="background:rgba(200,100,255,.06);border-left:3px solid rgba(200,100,255,.4);padding:8px 12px;border-radius:0 8px 8px 0;font-size:.78rem;color:#aaa">
+<span style="color:#c864ff;font-weight:600">简单记忆：</span>Function Calling 是模型的能力，Tool Use 是框架的抽象，MCP 是生态的标准。它们是不同层次的东西，不是互相替代的关系。
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+
+
+<div style="margin-top:30px;padding:20px;background:rgba(255,153,0,.05);border:1px solid rgba(255,153,0,.25);border-radius:14px">
+<div style="font-weight:700;color:#ff9900;margin-bottom:12px;font-size:1rem">☁️ AWS 服务映射</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.8">
+• Amazon Bedrock Agents — 全托管 Agent 服务（Action Groups + Knowledge Bases + Guardrails 一体）<br>• AWS Step Functions — 编排复杂 Agent 工作流，支持人工审批节点<br>• Amazon Bedrock Multi-Agent Collaboration — 多 Agent 协作的托管方案<br>• AWS Lambda — Agent 工具执行的计算层
+</div>
+</div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="index.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:10px;color:#ccc;font-size:.9rem">📚 返回目录</a>
+<a href="inference.html" style="text-decoration:none;padding:14px 24px;background:rgba(100,200,255,.08);border:1px solid rgba(100,200,255,.4);border-radius:10px;color:#64c8ff;font-size:.9rem">← 推理部署</a>
+<a href="rag.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.4);border-radius:10px;color:#ffc800;font-size:.9rem">RAG →</a>
+</div>
+</div>
+
+</div>
+<script>
+const stages=[
+{n:1,title:"什么是 Agent？",desc:"Agent = LLM + 工具调用 + 自主决策循环。不同于单次问答，Agent 能自主规划、执行动作、观察结果、迭代改进，直到完成目标。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap"><div style="background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);border-radius:8px;padding:12px 16px"><div style="font-size:.75rem;color:#888">普通 LLM</div><div style="font-size:.9rem;color:#c864ff">输入 → 输出</div></div><div style="color:#888;font-size:1.5rem">vs</div><div style="background:rgba(0,229,160,.15);border:1px solid rgba(0,229,160,.4);border-radius:8px;padding:12px 16px"><div style="font-size:.75rem;color:#888">Agent</div><div style="font-size:.9rem;color:#00e5a0">目标 → 规划 → 行动 → 观察 → 循环</div></div></div><div class="note">Agent 的核心能力：自主决定下一步做什么，而不是人类指定每一步</div></div>'},
+{n:2,title:"核心循环：感知-思考-行动",desc:"Agent 的运行本质是一个循环：接收输入/观察 → LLM 思考推理 → 决定下一步动作 → 执行动作 → 获得新观察 → 继续循环，直到任务完成。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap">';const cycle=["🎯 目标","🧠 思考","🔧 行动","👁 观察","✅ 完成?"];cycle.forEach((s,i)=>{h+=`<div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:20px;padding:8px 14px;font-size:.8rem;color:#00e5a0;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s">${s}</div>`;if(i<cycle.length-1)h+=`<span style="color:rgba(255,255,255,.2)">→</span>`});h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">循环直到 LLM 判断任务完成或达到最大步数</div></div>';return h}},
+{n:3,title:"LLM 作为大脑 (Reasoning Engine)",desc:"LLM 是 Agent 的核心推理引擎。负责理解目标、分解任务、选择工具、解读结果、处理异常。模型能力直接决定 Agent 上限。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;max-width:500px;margin:0 auto">';const caps=[{k:"理解意图",c:"#00e5a0"},{k:"任务分解",c:"#00b8d4"},{k:"工具选择",c:"#ffa500"},{k:"结果解读",c:"#c864ff"},{k:"异常处理",c:"#ff6b6b"},{k:"决定终止",c:"#ffc800"}];caps.forEach((c,i)=>{h+=`<div style="background:${c.c}15;border:1px solid ${c.c}40;border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="font-size:.8rem;color:${c.c};font-weight:600">${c.k}</div></div>`});h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">推理模型（o1/R1）作为 Agent 大脑效果更好</div></div>';return h}},
+{n:4,title:"工具定义 (Tool/Function Calling)",desc:"为 Agent 定义可用工具：每个工具有名称、描述、参数 schema。LLM 根据描述决定何时调用哪个工具，并生成结构化参数。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:450px;margin:0 auto;text-align:left;font-family:monospace;font-size:.75rem;line-height:1.8"><span style="color:#00e5a0">{</span><br>&nbsp;&nbsp;<span style="color:#00b8d4">"name"</span>: <span style="color:#ffa500">"web_search"</span>,<br>&nbsp;&nbsp;<span style="color:#00b8d4">"description"</span>: <span style="color:#ffa500">"搜索互联网获取信息"</span>,<br>&nbsp;&nbsp;<span style="color:#00b8d4">"parameters"</span>: {<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#00b8d4">"query"</span>: { <span style="color:#888">type: string, required</span> }<br>&nbsp;&nbsp;}<br><span style="color:#00e5a0">}</span></div><div style="margin-top:10px;font-size:.78rem;color:#888">工具描述质量直接影响 LLM 的调用准确率</div></div>'},
+{n:5,title:"System Prompt 设计",desc:"Agent 的 system prompt 定义其角色、能力边界、行为规范。包括：身份描述、可用工具说明、输出格式要求、安全约束、示例等。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:500px;margin:0 auto;text-align:left;font-size:.78rem;line-height:1.8;color:#aaa"><span style="color:#00e5a0;font-weight:600">## 角色</span><br>你是一个代码助手 Agent...<br><br><span style="color:#00b8d4;font-weight:600">## 可用工具</span><br>- read_file: 读取文件内容<br>- write_file: 写入文件<br>- run_command: 执行命令<br><br><span style="color:#ffa500;font-weight:600">## 规则</span><br>- 修改前先读取文件<br>- 危险操作需确认<br>- 每步解释推理过程</div></div>'},
+{n:6,title:"用户输入 → 规划 (Planning)",desc:"收到用户目标后，Agent 先进行规划：分解为子任务、确定执行顺序、识别依赖关系。好的规划减少无效尝试。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="margin-bottom:8px;font-size:.85rem;color:#aaa">用户：帮我重构这个函数并添加单元测试</div><div style="display:flex;flex-direction:column;align-items:center;gap:5px">';const plan=["1. 读取当前函数代码","2. 分析代码结构和问题","3. 设计重构方案","4. 实施重构","5. 编写单元测试","6. 运行测试验证"];plan.forEach((p,i)=>{h+=`<div style="background:rgba(0,184,212,.08);border:1px solid rgba(0,184,212,.3);border-radius:6px;padding:5px 16px;font-size:.78rem;color:#00b8d4;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s">${p}</div>`});h+='</div></div>';return h}},
+{n:7,title:"工具调用执行 (Action)",desc:"LLM 决定调用某个工具后，生成结构化的函数调用（function call）。系统执行该调用并返回结果。这是 Agent 与外部世界交互的方式。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:8px;padding:10px 20px;font-size:.8rem"><span style="color:#888">LLM 输出：</span><span style="color:#00e5a0">call read_file("src/utils.py")</span></div><div style="color:rgba(255,255,255,.3)">↓ 系统执行 ↓</div><div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:8px;padding:10px 20px;font-size:.8rem"><span style="color:#888">返回结果：</span><span style="color:#00b8d4">def calculate(x, y): ...</span></div><div style="color:rgba(255,255,255,.3)">↓ 结果送回 LLM ↓</div><div style="font-size:.78rem;color:#888">LLM 根据结果决定下一步</div></div></div>'},
+{n:8,title:"观察与反思 (Observation & Reflection)",desc:"Agent 接收工具执行结果后进行反思：结果是否符合预期？是否需要调整计划？是否遇到错误需要重试？这是 Agent 自我纠错的关键。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:8px;padding:12px;min-width:150px"><div style="color:#00ff88;font-weight:600;font-size:.8rem;margin-bottom:4px">✅ 成功</div><div style="font-size:.72rem;color:#aaa">继续下一步</div></div><div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:8px;padding:12px;min-width:150px"><div style="color:#ffa500;font-weight:600;font-size:.8rem;margin-bottom:4px">⚠️ 部分成功</div><div style="font-size:.72rem;color:#aaa">调整参数重试</div></div><div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:8px;padding:12px;min-width:150px"><div style="color:#ff6b6b;font-weight:600;font-size:.8rem;margin-bottom:4px">❌ 失败</div><div style="font-size:.72rem;color:#aaa">换工具/换策略</div></div></div><div class="note" style="max-width:450px;margin:12px auto 0">好的 Agent 能从失败中学习，而不是重复同样的错误</div></div>'},
+{n:9,title:"记忆系统 (Memory)",desc:"Agent 需要记忆来维持上下文：短期记忆（当前对话/工作区）、长期记忆（跨会话持久化）。记忆让 Agent 能处理长任务和个性化服务。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">';h+='<div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:10px;padding:14px;min-width:180px"><div style="color:#00b8d4;font-weight:600;font-size:.85rem;margin-bottom:6px">短期记忆</div><div style="font-size:.75rem;color:#aaa;line-height:1.5">对话上下文窗口<br>当前任务状态<br>工具调用历史<br><span style="color:#666">= Context Window</span></div></div>';h+='<div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:10px;padding:14px;min-width:180px"><div style="color:#00e5a0;font-weight:600;font-size:.85rem;margin-bottom:6px">长期记忆</div><div style="font-size:.75rem;color:#aaa;line-height:1.5">用户偏好<br>历史交互摘要<br>学到的知识<br><span style="color:#666">= Vector DB / KV Store</span></div></div>';h+='</div></div>';return h}},
+{n:10,title:"Guardrails 安全护栏",desc:"Agent 有执行能力，必须有安全约束：输入验证（防 injection）、工具权限控制、敏感操作人工确认、输出过滤、速率限制。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;max-width:500px;margin:0 auto">';const guards=[{k:"输入过滤",v:"防 Injection",c:"#ff6b6b"},{k:"权限控制",v:"最小权限",c:"#ffa500"},{k:"人工确认",v:"危险操作",c:"#00b8d4"},{k:"输出审核",v:"内容安全",c:"#c864ff"},{k:"速率限制",v:"防滥用",c:"#00e5a0"},{k:"沙箱执行",v:"隔离环境",c:"#ffc800"}];guards.forEach((g,i)=>{h+=`<div style="background:${g.c}15;border:1px solid ${g.c}40;border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.08}s"><div style="font-size:.75rem;color:${g.c};font-weight:600">${g.k}</div><div style="font-size:.65rem;color:#888">${g.v}</div></div>`});h+='</div></div>';return h}},
+{n:11,title:"Human-in-the-Loop",desc:"完全自主的 Agent 风险高。实践中常采用人机协作：Agent 执行低风险操作，高风险操作暂停等待人类确认。平衡自主性和安全性。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,229,160,.15);border:1px solid rgba(0,229,160,.4);border-radius:6px;padding:6px 12px;font-size:.78rem;color:#00e5a0">读取文件 ✓ 自动</div><div style="background:rgba(0,229,160,.15);border:1px solid rgba(0,229,160,.4);border-radius:6px;padding:6px 12px;font-size:.78rem;color:#00e5a0">搜索信息 ✓ 自动</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center"><div style="background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);border-radius:6px;padding:6px 12px;font-size:.78rem;color:#ffa500">修改代码 ⚠️ 展示 diff</div><div style="background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);border-radius:6px;padding:6px 12px;font-size:.78rem;color:#ff6b6b">删除文件 🛑 需确认</div></div></div><div style="margin-top:10px;font-size:.78rem;color:#888">Autopilot vs Supervised 模式切换</div></div>'},
+{n:12,title:"Agent 应用场景",desc:"Agent 正在改变软件开发、数据分析、客服、研究等领域。从 Coding Agent（Cursor/Kiro）到通用助手，Agent 是 LLM 落地的核心形态。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;max-width:550px;margin:0 auto">';const apps=[{k:"💻 Coding Agent",v:"Kiro, Cursor, Copilot",c:"#00e5a0"},{k:"🔬 Research Agent",v:"Deep Research, Perplexity",c:"#00b8d4"},{k:"📊 Data Agent",v:"数据分析自动化",c:"#ffa500"},{k:"🤝 Customer Agent",v:"智能客服/销售",c:"#c864ff"},{k:"🔧 DevOps Agent",v:"运维自动化",c:"#ff6b6b"},{k:"📝 Writing Agent",v:"内容创作助手",c:"#ffc800"}];apps.forEach((a,i)=>{h+=`<div style="background:${a.c}12;border:1px solid ${a.c}35;border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="font-size:.8rem;color:${a.c};font-weight:600">${a.k}</div><div style="font-size:.68rem;color:#888;margin-top:3px">${a.v}</div></div>`});h+='</div></div>';return h}}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  stages.forEach((s,i)=>{
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="common.css">
+<script src="nav.js"></script>
+<script src="progress.js"></script>
+<script src="quiz.js"></script>
+<script src="stepper.js"></script>
+</body>
+</html>

@@ -1,0 +1,401 @@
+.feynman {
+  margin-top: 16px;
+  padding: 14px 18px;
+  background: rgba(255, 213, 79, .06);
+  border: 1px solid rgba(255, 213, 79, .25);
+  border-left: 3px solid #ffd54f;
+  border-radius: 8px;
+  font-size: .82rem;
+  line-height: 1.7;
+  color: #e8d5a3;
+}
+
+/* Keyboard nav hint */
+.nav-hint {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: rgba(0,0,0,.7);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: .72rem;
+  color: #888;
+  z-index: 99;
+  opacity: 0.6;
+  transition: opacity .3s;
+}
+.nav-hint:hover { opacity: 1; }
+.nav-hint kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: .7rem;
+  color: #aaa;
+}
+
+/* === NEW: Platform Expansion === */
+
+/* ─── 1. Breadcrumb Navigation ─── */
+.breadcrumb {
+  position: fixed;
+  top: 12px;
+  left: 60px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, .55);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: .72rem;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.breadcrumb a {
+  color: var(--track-color, #aaa);
+  text-decoration: none;
+  transition: color .3s cubic-bezier(.4,0,.2,1);
+}
+.breadcrumb a:hover {
+  color: #fff;
+  text-shadow: 0 0 6px var(--track-color, #aaa);
+}
+.breadcrumb .separator {
+  color: #555;
+  font-size: .65rem;
+}
+.breadcrumb .current {
+  color: #ccc;
+  font-weight: 500;
+}
+
+/* ─── 2. Track Badge ─── */
+.track-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  background: rgba(255, 255, 255, .04);
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+.track-badge.track-a { border-color: #00d2ff; color: #00d2ff; }
+.track-badge.track-b { border-color: #ffa500; color: #ffa500; }
+.track-badge.track-c { border-color: #c864ff; color: #c864ff; }
+
+/* ─── 3. Progress Bar ─── */
+.progress-bar-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, .08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width .5s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 0 8px rgba(255, 255, 255, .15);
+}
+.progress-fill.track-a { background: #00d2ff; box-shadow: 0 0 8px rgba(0, 210, 255, .4); }
+.progress-fill.track-b { background: #ffa500; box-shadow: 0 0 8px rgba(255, 165, 0, .4); }
+.progress-fill.track-c { background: #c864ff; box-shadow: 0 0 8px rgba(200, 100, 255, .4); }
+
+/* ─── 4. SA Tip Sidebar ─── */
+.sa-tip-sidebar {
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 280px;
+  width: 280px;
+  background: rgba(20, 18, 30, .92);
+  border: 1px solid rgba(255, 165, 0, .3);
+  border-left: 3px solid #ffa500;
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 90;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .5), 0 0 12px rgba(255, 165, 0, .08);
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
+}
+.sa-tip-sidebar.collapsed {
+  width: 42px;
+  max-width: 42px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sa-tip-sidebar.collapsed .sa-tip-content {
+  opacity: 0;
+  visibility: hidden;
+}
+.sa-tip-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: rgba(255, 165, 0, .15);
+  border-radius: 6px;
+  color: #ffa500;
+  font-size: .85rem;
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: background .3s;
+}
+.sa-tip-toggle:hover {
+  background: rgba(255, 165, 0, .3);
+}
+.sa-tip-content {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .3s cubic-bezier(.4,0,.2,1);
+}
+.sa-tip-content h4 {
+  margin: 0 0 8px;
+  font-size: .78rem;
+  color: #ffa500;
+  font-weight: 600;
+}
+.sa-tip-content p {
+  margin: 0 0 10px;
+  font-size: .75rem;
+  line-height: 1.6;
+  color: #bbb;
+}
+
+/* ─── 5. Quiz Component ─── */
+.quiz-container {
+  margin-top: 20px;
+  padding: 20px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 12px;
+}
+.quiz-question {
+  font-size: .88rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.quiz-option {
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 8px;
+  font-size: .8rem;
+  color: #ccc;
+  cursor: pointer;
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+.quiz-option:hover {
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .25);
+  box-shadow: 0 0 12px rgba(255, 255, 255, .06);
+}
+.quiz-option.correct {
+  background: rgba(0, 255, 136, .08);
+  border-color: #00ff88;
+  color: #00ff88;
+  box-shadow: 0 0 12px rgba(0, 255, 136, .15);
+}
+.quiz-option.wrong {
+  background: rgba(255, 68, 68, .08);
+  border-color: #ff4444;
+  color: #ff4444;
+  box-shadow: 0 0 12px rgba(255, 68, 68, .15);
+}
+.quiz-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.quiz-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.quiz-input input {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, .4);
+  border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: .8rem;
+  outline: none;
+  transition: border-color .3s;
+}
+.quiz-input input:focus {
+  border-color: var(--track-color, #00d2ff);
+}
+.quiz-input button {
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 6px;
+  color: #ddd;
+  font-size: .78rem;
+  cursor: pointer;
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+.quiz-input button:hover {
+  background: rgba(255, 255, 255, .15);
+  border-color: rgba(255, 255, 255, .35);
+}
+.quiz-explanation {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 213, 79, .06);
+  border-left: 3px solid #ffd54f;
+  border-radius: 6px;
+  font-size: .76rem;
+  line-height: 1.6;
+  color: #e8d5a3;
+}
+.quiz-result {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: .8rem;
+  font-weight: 500;
+  text-align: center;
+}
+.quiz-result.pass {
+  background: rgba(0, 255, 136, .08);
+  border: 1px solid rgba(0, 255, 136, .3);
+  color: #00ff88;
+}
+
+/* ─── 6. Track Cards (index.html) ─── */
+.track-card {
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 16px;
+  padding: 24px;
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+.track-card:hover {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .3), 0 0 16px rgba(255, 255, 255, .04);
+  transform: translateY(-2px);
+}
+.track-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.track-card-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #eee;
+}
+.track-card .track-progress {
+  margin-bottom: 16px;
+}
+.track-card .page-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.track-card .page-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: background .3s;
+}
+.track-card .page-item:hover {
+  background: rgba(255, 255, 255, .04);
+}
+.track-card .page-item a {
+  color: #bbb;
+  text-decoration: none;
+  font-size: .78rem;
+  transition: color .3s;
+}
+.track-card .page-item a:hover {
+  color: #fff;
+}
+.page-status-icon {
+  font-size: .7rem;
+  width: 16px;
+  text-align: center;
+}
+.page-status-icon.complete { color: #00ff88; }
+.page-status-icon.in-progress { color: #ffc800; }
+.page-status-icon.not-started { color: #555; }
+
+/* ─── 7. Related Topics ─── */
+.related-topics {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+.related-topics h4 {
+  margin: 0 0 12px;
+  font-size: .8rem;
+  color: #888;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.related-topic-link {
+  display: inline-block;
+  padding: 8px 14px;
+  margin: 4px 6px 4px 0;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 8px;
+  color: #aaa;
+  text-decoration: none;
+  font-size: .76rem;
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+.related-topic-link:hover {
+  background: rgba(255, 255, 255, .08);
+  border-color: var(--track-color, rgba(255, 255, 255, .25));
+  color: #fff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, .05);
+}
+
+/* ─── Responsive: min 375px ─── */
+@media (max-width: 480px) {
+  .breadcrumb {
+    left: 12px;
+    padding: 5px 10px;
+    font-size: .65rem;
+  }
+  .sa-tip-sidebar {
+    max-width: 220px;
+    width: 220px;
+    right: 8px;
+  }
+  .track-card {
+    padding: 16px;
+  }
+}

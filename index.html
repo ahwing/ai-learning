@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI · SA · Agent 学习平台</title>
+<link rel="stylesheet" href="common.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;color:#e0e0e0}
+.container{max-width:1400px;margin:0 auto;padding:50px 40px 100px}
+
+/* Header */
+header{text-align:center;margin-bottom:50px}
+h1{font-size:2.8rem;margin-bottom:12px;background:linear-gradient(90deg,#00d2ff,#ffa500,#c864ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.5px}
+.subtitle{color:#888;font-size:1.05rem;margin-bottom:20px}
+.badge-row{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:28px}
+.badge{padding:5px 14px;border-radius:20px;font-size:.75rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#aaa}
+
+/* Overall Progress */
+.overall-progress{max-width:500px;margin:0 auto;text-align:center}
+.overall-progress-label{font-size:.82rem;color:#888;margin-bottom:8px}
+.overall-progress-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.overall-progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#00d2ff,#ffa500,#c864ff);transition:width .6s cubic-bezier(.4,0,.2,1)}
+.overall-progress-text{font-size:.75rem;color:#666;margin-top:6px}
+
+/* Tracks Grid */
+.tracks-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+@media(max-width:1100px){.tracks-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.tracks-grid{grid-template-columns:1fr}}
+
+/* Track Card */
+.track-card{border-radius:16px;padding:28px 24px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);transition:all .3s cubic-bezier(.4,0,.2,1);position:relative;display:flex;flex-direction:column}
+.track-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:16px 16px 0 0;background:var(--track-color);opacity:.8}
+.track-card:hover{transform:translateY(-4px);border-color:var(--track-color);box-shadow:0 8px 32px rgba(0,0,0,.3),0 0 20px color-mix(in srgb,var(--track-color) 20%,transparent)}
+
+/* Track Card Header */
+.track-card-header{margin-bottom:16px}
+.track-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:.68rem;font-weight:700;letter-spacing:.5px;margin-bottom:8px}
+.track-badge.track-a{background:rgba(0,210,255,.15);color:#00d2ff;border:1px solid rgba(0,210,255,.3)}
+.track-badge.track-b{background:rgba(255,165,0,.15);color:#ffa500;border:1px solid rgba(255,165,0,.3)}
+.track-badge.track-c{background:rgba(200,100,255,.15);color:#c864ff;border:1px solid rgba(200,100,255,.3)}
+.track-card-header h2{font-size:1.3rem;font-weight:700;color:#fff;margin-bottom:4px}
+.track-card-header p{font-size:.82rem;color:#888}
+
+/* Track Progress */
+.track-progress{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.progress-bar-track{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.progress-fill.track-a{background:#00d2ff}
+.progress-fill.track-b{background:#ffa500}
+.progress-fill.track-c{background:#c864ff}
+.progress-text{font-size:.72rem;color:#888;white-space:nowrap;min-width:42px;text-align:right}
+
+/* Groups */
+.groups{flex:1}
+.group{margin-bottom:14px}
+.group:last-child{margin-bottom:0}
+.group h4{font-size:.72rem;text-transform:uppercase;letter-spacing:1.5px;color:#666;margin-bottom:6px;padding-left:2px}
+.page-list{display:flex;flex-direction:column;gap:3px}
+.page-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;text-decoration:none;color:#ccc;font-size:.84rem;transition:all .2s}
+.page-item:hover{background:rgba(255,255,255,.06);color:#fff}
+
+/* Status Icons */
+.page-status-icon{font-size:.9rem;flex-shrink:0;width:16px;text-align:center}
+.page-status-icon.not-started{color:#555}
+.page-status-icon.in-progress{color:#ffc800}
+.page-status-icon.complete{color:#00ff88}
+
+/* Suggestion Note */
+.track-note{margin-top:14px;padding:8px 12px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:.72rem;color:#777;line-height:1.5}
+
+/* Keyboard hint */
+.keyboard-hint{position:fixed;bottom:16px;right:16px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 16px;font-size:.72rem;color:#888;z-index:99;opacity:.6;transition:opacity .3s}
+.keyboard-hint:hover{opacity:1}
+.keyboard-hint kbd{display:inline-block;padding:2px 6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:4px;font-family:monospace;font-size:.7rem;color:#aaa;margin:0 2px}
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+<h1>AI · SA · Agent 学习平台</h1>
+<p class="subtitle">从底层架构到企业实践 — 三赛道交互式学习</p>
+<div class="badge-row">
+<span class="badge">24 个专题</span>
+<span class="badge">170+ 交互步骤</span>
+<span class="badge">逐步动画演示</span>
+</div>
+<div class="overall-progress">
+<div class="overall-progress-label">总体学习进度</div>
+<div class="overall-progress-bar"><div class="overall-progress-fill" id="overall-fill" style="width:0%"></div></div>
+<div class="overall-progress-text" id="overall-text">0/24 完成</div>
+</div>
+</header>
+
+<!-- 三赛道卡片 -->
+<div class="tracks-grid">
+
+<!-- 赛道 A: AI 基础 -->
+<div class="track-card" style="--track-color:#00d2ff">
+<div class="track-card-header">
+<span class="track-badge track-a">赛道 A</span>
+<h2>AI 基础能力</h2>
+<p>从神经网络到多模态 — 16 个专题</p>
+</div>
+<div class="track-progress">
+<div class="progress-bar-track"><div class="progress-fill track-a" id="progress-a" style="width:0%"></div></div>
+<span class="progress-text" id="progress-text-a">0/16</span>
+</div>
+<div class="groups">
+<div class="group">
+<h4>AI 基础</h4>
+<div class="page-list">
+<a href="neural-network.html" class="page-item" data-page="neural-network"><span class="page-status-icon not-started">○</span>🧠 神经网络基础</a>
+<a href="transformer.html" class="page-item" data-page="transformer"><span class="page-status-icon not-started">○</span>🧱 Transformer 架构</a>
+<a href="pre-training.html" class="page-item" data-page="pre-training"><span class="page-status-icon not-started">○</span>🔥 预训练</a>
+<a href="scaling-laws.html" class="page-item" data-page="scaling-laws"><span class="page-status-icon not-started">○</span>📈 Scaling Laws</a>
+</div>
+</div>
+<div class="group">
+<h4>模型训练</h4>
+<div class="page-list">
+<a href="sft.html" class="page-item" data-page="sft"><span class="page-status-icon not-started">○</span>📝 监督微调 (SFT)</a>
+<a href="rlhf.html" class="page-item" data-page="rlhf"><span class="page-status-icon not-started">○</span>🎯 对齐 (RLHF/DPO)</a>
+<a href="rl-reasoning.html" class="page-item" data-page="rl-reasoning"><span class="page-status-icon not-started">○</span>🧠 推理强化 (RL)</a>
+</div>
+</div>
+<div class="group">
+<h4>部署应用</h4>
+<div class="page-list">
+<a href="bedrock-overview.html" class="page-item" data-page="bedrock-overview"><span class="page-status-icon not-started">○</span>☁️ Amazon Bedrock 全景</a>
+<a href="inference.html" class="page-item" data-page="inference"><span class="page-status-icon not-started">○</span>⚡ 推理部署</a>
+<a href="rag.html" class="page-item" data-page="rag"><span class="page-status-icon not-started">○</span>🔍 RAG 检索增强生成</a>
+<a href="prompt-engineering.html" class="page-item" data-page="prompt-engineering"><span class="page-status-icon not-started">○</span>✍️ Prompt Engineering</a>
+<a href="evaluation.html" class="page-item" data-page="evaluation"><span class="page-status-icon not-started">○</span>📊 Evaluation 评估</a>
+<a href="mcp.html" class="page-item" data-page="mcp"><span class="page-status-icon not-started">○</span>🔌 MCP</a>
+</div>
+</div>
+<div class="group">
+<h4>进阶应用</h4>
+<div class="page-list">
+<a href="multimodal.html" class="page-item" data-page="multimodal"><span class="page-status-icon not-started">○</span>🌐 多模态 AI</a>
+<a href="agent.html" class="page-item" data-page="agent"><span class="page-status-icon not-started">○</span>🤖 AI Agent</a>
+<a href="guardrails.html" class="page-item" data-page="guardrails"><span class="page-status-icon not-started">○</span>🛡️ Guardrails & AI 安全</a>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 赛道 B: SA 能力 -->
+<div class="track-card" style="--track-color:#ffa500">
+<div class="track-card-header">
+<span class="track-badge track-b">赛道 B</span>
+<h2>SA 能力</h2>
+<p>Solutions Architect — 4 个专题</p>
+</div>
+<div class="track-progress">
+<div class="progress-bar-track"><div class="progress-fill track-b" id="progress-b" style="width:0%"></div></div>
+<span class="progress-text" id="progress-text-b">0/4</span>
+</div>
+<div class="groups">
+<div class="group">
+<h4>Solutions Architect</h4>
+<div class="page-list">
+<a href="b1-aws-ai-services.html" class="page-item" data-page="b1-aws-ai-services"><span class="page-status-icon not-started">○</span>☁️ AWS AI/ML 服务全景</a>
+<a href="b2-architecture-patterns.html" class="page-item" data-page="b2-architecture-patterns"><span class="page-status-icon not-started">○</span>🏗️ AI 架构模式</a>
+<a href="b3-cost-optimization.html" class="page-item" data-page="b3-cost-optimization"><span class="page-status-icon not-started">○</span>💰 成本优化与选型</a>
+<a href="b4-security-compliance.html" class="page-item" data-page="b4-security-compliance"><span class="page-status-icon not-started">○</span>🔒 安全合规</a>
+</div>
+</div>
+</div>
+<div class="track-note">💡 建议先完成赛道 A 的相关专题</div>
+</div>
+
+<!-- 赛道 C: Agent 能力 -->
+<div class="track-card" style="--track-color:#c864ff">
+<div class="track-card-header">
+<span class="track-badge track-c">赛道 C</span>
+<h2>Agent 能力</h2>
+<p>Agent 进阶 — 4 个专题</p>
+</div>
+<div class="track-progress">
+<div class="progress-bar-track"><div class="progress-fill track-c" id="progress-c" style="width:0%"></div></div>
+<span class="progress-text" id="progress-text-c">0/4</span>
+</div>
+<div class="groups">
+<div class="group">
+<h4>Agent 进阶</h4>
+<div class="page-list">
+<a href="c1-multi-agent.html" class="page-item" data-page="c1-multi-agent"><span class="page-status-icon not-started">○</span>🤝 Multi-Agent 架构</a>
+<a href="c2-agent-frameworks.html" class="page-item" data-page="c2-agent-frameworks"><span class="page-status-icon not-started">○</span>🔧 Agent 编排框架</a>
+<a href="c3-agent-evaluation.html" class="page-item" data-page="c3-agent-evaluation"><span class="page-status-icon not-started">○</span>📊 Agent 评估与可观测性</a>
+<a href="c4-enterprise-agent.html" class="page-item" data-page="c4-enterprise-agent"><span class="page-status-icon not-started">○</span>🏢 企业级 Agent 部署</a>
+</div>
+</div>
+</div>
+<div class="track-note">💡 建议先完成赛道 A 的相关专题</div>
+</div>
+
+</div><!-- /tracks-grid -->
+
+</div><!-- /container -->
+
+<!-- Keyboard Navigation Hint -->
+<div class="keyboard-hint">
+<kbd>←</kbd><kbd>→</kbd> 翻页 · <kbd>H</kbd> 首页 · <kbd>R</kbd> 重置进度
+</div>
+
+<script src="nav.js"></script>
+<script src="progress.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (!window.Progress || !window.NAV_CONFIG) return;
+
+  var STORAGE_KEY = 'llm_learning_progress';
+  var progressData;
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    progressData = raw ? JSON.parse(raw) : { pages: {} };
+    if (!progressData || !progressData.pages) progressData = { pages: {} };
+  } catch(e) {
+    progressData = { pages: {} };
+  }
+
+  // Update each page item's status icon
+  var pageItems = document.querySelectorAll('.page-item[data-page]');
+  var totalCompleted = 0;
+  var totalPages = pageItems.length;
+
+  pageItems.forEach(function(item) {
+    var pageId = item.getAttribute('data-page');
+    var entry = progressData.pages[pageId];
+    var status = entry ? entry.status : 'not_started';
+    var icon = item.querySelector('.page-status-icon');
+    if (!icon) return;
+
+    icon.className = 'page-status-icon ' + status.replace('_', '-');
+    if (status === 'complete') {
+      icon.textContent = '●';
+      icon.classList.remove('not-started', 'in-progress');
+      icon.classList.add('complete');
+      totalCompleted++;
+    } else if (status === 'in_progress') {
+      icon.textContent = '◐';
+      icon.classList.remove('not-started', 'complete');
+      icon.classList.add('in-progress');
+    } else {
+      icon.textContent = '○';
+      icon.classList.remove('in-progress', 'complete');
+      icon.classList.add('not-started');
+    }
+  });
+
+  // Update track progress bars
+  var tracks = window.NAV_CONFIG.tracks;
+  tracks.forEach(function(track) {
+    var trackId = track.id.toLowerCase();
+    var allPages = [];
+    track.groups.forEach(function(g) {
+      g.pages.forEach(function(p) {
+        var file = p.file.replace('.html', '');
+        allPages.push(file);
+      });
+    });
+
+    var completed = 0;
+    allPages.forEach(function(pid) {
+      var entry = progressData.pages[pid];
+      if (entry && entry.status === 'complete') completed++;
+    });
+
+    var total = allPages.length;
+    var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    var fillEl = document.getElementById('progress-' + trackId);
+    var textEl = document.getElementById('progress-text-' + trackId);
+    if (fillEl) fillEl.style.width = pct + '%';
+    if (textEl) textEl.textContent = completed + '/' + total;
+  });
+
+  // Update overall progress
+  var overallPct = totalPages > 0 ? Math.round((totalCompleted / totalPages) * 100) : 0;
+  var overallFill = document.getElementById('overall-fill');
+  var overallText = document.getElementById('overall-text');
+  if (overallFill) overallFill.style.width = overallPct + '%';
+  if (overallText) overallText.textContent = totalCompleted + '/' + totalPages + ' 完成 (' + overallPct + '%)';
+});
+</script>
+</body>
+</html>

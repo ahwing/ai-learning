@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 评估与可观测性</title>
+<link rel="stylesheet" href="common.css">
+<style>
+:root{--track-color:#c864ff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0a1a,#1a0f2e,#120a20);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.2rem;margin-bottom:8px;background:linear-gradient(90deg,#c864ff,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:35px;font-size:.95rem}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#c864ff,#a855f7);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(200,100,255,.4)}
+.btn-s{background:rgba(255,255,255,.08);color:#ccc;border:1px solid rgba(255,255,255,.15)}
+.btn-s:hover{background:rgba(255,255,255,.15)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.step-bar{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:30px}
+.step-bar .label{color:#aaa;font-size:.9rem}
+.step-bar .label span{color:#c864ff;font-weight:bold}
+.progress-bar-track{flex:1;max-width:300px}
+.progress-fill{background:#c864ff;box-shadow:0 0 8px rgba(200,100,255,.4)}
+/* Stage card */
+.stage{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:24px;margin-bottom:16px;position:relative;overflow:hidden;animation:fadeUp .4s ease}
+.stage::before{content:'';position:absolute;left:0;top:0;width:4px;height:100%;background:linear-gradient(180deg,#c864ff,#a855f7);opacity:1}
+.stage-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#c864ff,#a855f7);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0;color:#fff}
+.stage-title{font-size:1.15rem;font-weight:700;color:#fff}
+.stage-desc{color:#999;font-size:.88rem;line-height:1.7;margin-bottom:14px}
+.viz{background:rgba(0,0,0,.35);border-radius:10px;padding:18px;min-height:50px;overflow:hidden}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+@keyframes flowRight{0%{transform:translateX(-6px);opacity:0}50%{opacity:1}100%{transform:translateX(6px);opacity:0}}
+.note{background:rgba(200,100,255,.05);border-left:3px solid rgba(200,100,255,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.82rem;color:#bbb;line-height:1.6}
+/* Trace waterfall */
+.trace-row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:.75rem}
+.trace-label{min-width:80px;color:#aaa;text-align:right}
+.trace-bar{height:22px;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:.68rem;color:#fff;font-weight:500;opacity:0;animation:slideIn .5s ease forwards}
+/* Three pillars */
+.pillar{flex:1;min-width:140px;padding:16px;border-radius:10px;text-align:center}
+.pillar-icon{font-size:1.5rem;margin-bottom:6px}
+.pillar-title{font-size:.85rem;font-weight:700;margin-bottom:6px}
+.pillar-items{font-size:.72rem;color:#aaa;line-height:1.7}
+/* Nav */
+.nav-section{margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.08)}
+.nav-links{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.nav-links a{text-decoration:none;padding:12px 20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#aaa;font-size:.85rem;transition:all .3s}
+.nav-links a:hover{border-color:rgba(200,100,255,.4);color:#c864ff;background:rgba(200,100,255,.05)}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📊 Agent 评估与可观测性</h1>
+<p class="subtitle">如何衡量 Agent 好不好、跑得对不对 — 从 Eval 到全链路 Observability</p>
+
+<div class="controls">
+<button class="btn btn-s" id="btnPrev" onclick="prev()">← 上一步</button>
+<button class="btn btn-p" id="btnNext" onclick="next()">下一步 →</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+</div>
+
+<div class="step-bar">
+<div class="label">步骤 <span id="stepText">1 / 7</span></div>
+<div class="progress-bar-track"><div class="progress-fill" id="progressBar" style="width:14.3%"></div></div>
+</div>
+
+<div id="content"></div>
+
+<!-- Navigation -->
+<div class="nav-section">
+<div class="nav-links">
+<a href="index.html">📚 返回目录</a>
+<a href="c2-agent-frameworks.html">← Agent 编排框架</a>
+<a href="c4-enterprise-agent.html">企业级 Agent 部署 →</a>
+</div>
+</div>
+</div>
+
+<script src="nav.js"></script>
+<script src="progress.js"></script>
+<script src="stepper.js"></script>
+<script src="quiz.js"></script>
+<script>
+const stages = [
+// Step 1: 为什么 Agent Eval 很难
+{
+  title: '为什么 Agent Eval 很难？',
+  desc: 'Agent 评估比传统模型评估复杂得多。模型是"给输入→看输出"，但 Agent 是多步骤、非确定性的系统，涉及工具调用副作用、路径依赖、环境交互。同一任务可能有多条正确路径，每次执行结果都可能不同。',
+  viz: function(){
+    return '<div style="width:100%"><div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-bottom:14px">'
+    +'<div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:8px;padding:12px 16px;min-width:150px;text-align:center">'
+    +'<div style="font-size:1.2rem;margin-bottom:4px">🎲</div><div style="color:#c864ff;font-size:.8rem;font-weight:600">非确定性</div><div style="font-size:.7rem;color:#888;margin-top:4px">相同输入 → 不同路径</div></div>'
+    +'<div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:8px;padding:12px 16px;min-width:150px;text-align:center">'
+    +'<div style="font-size:1.2rem;margin-bottom:4px">🔗</div><div style="color:#ffa500;font-size:.8rem;font-weight:600">多步骤依赖</div><div style="font-size:.7rem;color:#888;margin-top:4px">错误会级联放大</div></div>'
+    +'<div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:8px;padding:12px 16px;min-width:150px;text-align:center">'
+    +'<div style="font-size:1.2rem;margin-bottom:4px">⚡</div><div style="color:#ff6b6b;font-size:.8rem;font-weight:600">工具副作用</div><div style="font-size:.7rem;color:#888;margin-top:4px">发邮件/改数据库不可逆</div></div>'
+    +'<div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:8px;padding:12px 16px;min-width:150px;text-align:center">'
+    +'<div style="font-size:1.2rem;margin-bottom:4px">🌿</div><div style="color:#00e5a0;font-size:.8rem;font-weight:600">多正确路径</div><div style="font-size:.7rem;color:#888;margin-top:4px">条条大路通罗马</div></div>'
+    +'</div>'
+    +'<div class="note">💡 传统模型评估用 BLEU/Accuracy 等单一指标；Agent 需要多维度、面向过程的评估体系。</div></div>';
+  }
+},
+// Step 2: 评估维度
+{
+  title: '评估维度',
+  desc: '评价一个 Agent 不能只看"答对没有"。需要从任务完成率、效率（步骤数/时间）、成本（Token 消耗）、安全性（有无越界行为）等多个维度综合打分。',
+  viz: function(){
+    var dims = [
+      {icon:'✅',name:'任务完成率',desc:'最终目标是否达成',color:'#00e5a0'},
+      {icon:'⚡',name:'效率',desc:'步骤数 / 延迟 / Token数',color:'#00b8d4'},
+      {icon:'💰',name:'成本',desc:'API 费用 / 工具调用次数',color:'#ffa500'},
+      {icon:'🛡️',name:'安全',desc:'有无越权、泄露、幻觉',color:'#ff6b6b'},
+      {icon:'🔄',name:'鲁棒性',desc:'对异常输入的容错能力',color:'#c864ff'},
+      {icon:'📏',name:'一致性',desc:'相似任务结果稳定性',color:'#ffc800'}
+    ];
+    var h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">';
+    dims.forEach(function(d,i){
+      h += '<div style="background:'+d.color+'12;border:1px solid '+d.color+'35;border-radius:8px;padding:12px;text-align:center;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:'+i*0.08+'s">'
+        +'<div style="font-size:1.1rem">'+d.icon+'</div>'
+        +'<div style="color:'+d.color+';font-size:.78rem;font-weight:600;margin:4px 0">'+d.name+'</div>'
+        +'<div style="font-size:.68rem;color:#888">'+d.desc+'</div></div>';
+    });
+    h += '</div><div class="note">🎯 不同应用场景对维度的权重不同 — 客服 Agent 侧重完成率+安全，编程 Agent 侧重完成率+效率。</div>';
+    return h;
+  }
+},
+// Step 3: 评估方法
+{
+  title: '评估方法',
+  desc: '主流的 Agent 评估方法包括：基准测试套件（如 SWE-bench、GAIA）、LLM-as-Judge（用另一个 LLM 打分）、人工评审、A/B 测试。每种方法各有优劣，实际中常组合使用。',
+  viz: function(){
+    var methods = [
+      {name:'Benchmark Suite',desc:'标准化题目集<br>SWE-bench / GAIA / WebArena',pros:'可重复、可对比',cons:'覆盖有限',color:'#c864ff'},
+      {name:'LLM-as-Judge',desc:'GPT-4 / Claude 当裁判<br>评判输出质量',pros:'可规模化',cons:'评判偏差',color:'#00b8d4'},
+      {name:'人工评审',desc:'领域专家逐条打分<br>金标准',pros:'最准确',cons:'昂贵、慢',color:'#ffa500'},
+      {name:'A/B Test',desc:'线上分流对比<br>新旧 Agent 表现',pros:'真实环境',cons:'需要流量',color:'#00e5a0'}
+    ];
+    var h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">';
+    methods.forEach(function(m,i){
+      h += '<div style="background:rgba(0,0,0,.3);border:1px solid '+m.color+'40;border-radius:10px;padding:14px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:'+i*0.1+'s">'
+        +'<div style="color:'+m.color+';font-weight:700;font-size:.85rem;margin-bottom:6px">'+m.name+'</div>'
+        +'<div style="font-size:.72rem;color:#aaa;line-height:1.5;margin-bottom:8px">'+m.desc+'</div>'
+        +'<div style="font-size:.68rem"><span style="color:#00e5a0">✓ '+m.pros+'</span><br><span style="color:#ff6b6b">✗ '+m.cons+'</span></div></div>';
+    });
+    h += '</div>';
+    return h;
+  }
+},
+// Step 4: Trace 与调试 — 瀑布图动画
+{
+  title: 'Trace 与调试',
+  desc: '当 Agent 行为异常时，需要完整的执行轨迹（Trace）来定位问题。Trace 记录每一步的输入输出、延迟、Token 消耗。工具如 LangSmith、Weights & Biases、AWS CloudWatch 支持瀑布图式可视化。',
+  viz: function(){
+    var steps = [
+      {label:'用户输入',dur:50,start:0,color:'#c864ff',text:'Query: "帮我订明天的会议室"'},
+      {label:'LLM 思考',dur:120,start:50,color:'#a855f7',text:'Planning: 需要查日历+预定'},
+      {label:'Tool: 查日历',dur:200,start:170,color:'#00b8d4',text:'calendar.list() → 3个空闲时段'},
+      {label:'LLM 决策',dur:80,start:370,color:'#a855f7',text:'选择 10:00-11:00 时段'},
+      {label:'Tool: 预定',dur:150,start:450,color:'#00e5a0',text:'room.book("A-301", 10:00)'},
+      {label:'LLM 回复',dur:60,start:600,color:'#c864ff',text:'生成确认消息给用户'}
+    ];
+    var maxEnd = 660;
+    var h = '<div style="width:100%">';
+    h += '<div style="font-size:.72rem;color:#888;margin-bottom:10px;display:flex;justify-content:space-between"><span>0ms</span><span>'+maxEnd+'ms</span></div>';
+    steps.forEach(function(s,i){
+      var left = (s.start/maxEnd*100).toFixed(1);
+      var width = (s.dur/maxEnd*100).toFixed(1);
+      h += '<div class="trace-row">'
+        +'<div class="trace-label">'+s.label+'</div>'
+        +'<div style="flex:1;position:relative;height:22px;background:rgba(255,255,255,.03);border-radius:4px">'
+        +'<div class="trace-bar" style="position:absolute;left:'+left+'%;width:'+width+'%;background:'+s.color+';animation-delay:'+(i*0.15)+'s">'+s.dur+'ms</div>'
+        +'</div></div>';
+    });
+    h += '<div class="note">🔍 瀑布图一目了然：哪个工具调用最慢？LLM 思考用了多久？总延迟如何分布？</div></div>';
+    return h;
+  }
+},
+// Step 5: 可观测性架构 — 三支柱图
+{
+  title: '可观测性架构',
+  desc: '可观测性（Observability）的三支柱 — Metrics（指标）、Logs（日志）、Traces（链路追踪）— 在 Agent 场景有特殊含义。三者相互关联：Metrics 发现异常 → Traces 定位链路 → Logs 查看细节。',
+  viz: function(){
+    var h = '<div style="width:100%">';
+    // Three pillars
+    h += '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:16px">';
+    h += '<div class="pillar" style="background:rgba(200,100,255,.08);border:1px solid rgba(200,100,255,.3);border-radius:10px">'
+      +'<div class="pillar-icon">📈</div><div class="pillar-title" style="color:#c864ff">Metrics 指标</div>'
+      +'<div class="pillar-items">• 任务成功率<br>• P95 延迟<br>• Token 消耗/成本<br>• 工具调用失败率</div></div>';
+    h += '<div class="pillar" style="background:rgba(0,184,212,.08);border:1px solid rgba(0,184,212,.3);border-radius:10px">'
+      +'<div class="pillar-icon">📋</div><div class="pillar-title" style="color:#00b8d4">Logs 日志</div>'
+      +'<div class="pillar-items">• LLM 输入/输出<br>• 工具调用参数<br>• 错误堆栈<br>• 决策理由</div></div>';
+    h += '<div class="pillar" style="background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.3);border-radius:10px">'
+      +'<div class="pillar-icon">🔗</div><div class="pillar-title" style="color:#00e5a0">Traces 链路</div>'
+      +'<div class="pillar-items">• 完整执行路径<br>• 父子 Span 关系<br>• 跨服务传播<br>• 瀑布图可视化</div></div>';
+    h += '</div>';
+    // Architecture diagram
+    h += '<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-top:10px">';
+    h += '<div style="text-align:center;font-size:.75rem;color:#888;margin-bottom:8px">Agent 可观测性架构</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:6px;align-items:center">';
+    h += '<div style="background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);border-radius:6px;padding:8px 20px;font-size:.78rem;color:#c864ff;font-weight:600">Agent Runtime</div>';
+    h += '<div style="color:rgba(200,100,255,.4);font-size:.8rem">↓ OpenTelemetry SDK ↓</div>';
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">';
+    h += '<div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#ffa500">CloudWatch</div>';
+    h += '<div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#00b8d4">LangSmith</div>';
+    h += '<div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#00e5a0">W&B Weave</div>';
+    h += '<div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#ffc800">Grafana</div>';
+    h += '</div>';
+    h += '<div style="color:rgba(255,255,255,.2);font-size:.8rem">↓ 告警 & 仪表板 ↓</div>';
+    h += '<div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#ff6b6b">🔔 PagerDuty / SNS / Slack</div>';
+    h += '</div></div>';
+    h += '<div class="note">☁️ AWS 方案：CloudWatch Metrics + X-Ray Traces + CloudWatch Logs = 三支柱一站式覆盖。</div>';
+    h += '</div>';
+    return h;
+  }
+},
+// Step 6: 持续监控
+{
+  title: '持续监控',
+  desc: 'Agent 上线后不是"一劳永逸"。需要持续监控性能漂移（Drift）、设置告警规则、并在异常时自动回滚。常见信号：成功率下降、延迟飙升、成本突增、用户满意度下跌。',
+  viz: function(){
+    var h = '<div style="width:100%">';
+    // Monitor pipeline
+    h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:14px">';
+    var pipeline = [
+      {icon:'📊',text:'采集指标',color:'#c864ff'},
+      {icon:'📉',text:'Drift 检测',color:'#ffa500'},
+      {icon:'🔔',text:'触发告警',color:'#ff6b6b'},
+      {icon:'🔄',text:'自动回滚',color:'#00e5a0'}
+    ];
+    pipeline.forEach(function(p,i){
+      if(i>0) h += '<div style="color:rgba(255,255,255,.3);font-size:.9rem">→</div>';
+      h += '<div style="background:'+p.color+'15;border:1px solid '+p.color+'40;border-radius:8px;padding:10px 14px;text-align:center">'
+        +'<div style="font-size:1rem">'+p.icon+'</div>'
+        +'<div style="font-size:.72rem;color:'+p.color+';font-weight:600;margin-top:2px">'+p.text+'</div></div>';
+    });
+    h += '</div>';
+    // Alert rules example
+    h += '<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-family:monospace;font-size:.72rem;line-height:1.8;color:#aaa">';
+    h += '<div style="color:#888;margin-bottom:6px"># 告警规则示例</div>';
+    h += '<span style="color:#c864ff">alert</span>: agent_success_rate_low<br>';
+    h += '<span style="color:#c864ff">condition</span>: success_rate &lt; <span style="color:#ff6b6b">0.85</span> for <span style="color:#ffa500">5min</span><br>';
+    h += '<span style="color:#c864ff">action</span>: <span style="color:#00e5a0">rollback_to_previous_version</span><br><br>';
+    h += '<span style="color:#c864ff">alert</span>: cost_spike<br>';
+    h += '<span style="color:#c864ff">condition</span>: hourly_cost &gt; <span style="color:#ff6b6b">2x baseline</span><br>';
+    h += '<span style="color:#c864ff">action</span>: <span style="color:#ffa500">throttle + notify_oncall</span>';
+    h += '</div>';
+    h += '<div class="note">⚠️ Drift 常见原因：底层模型更新、用户行为变化、外部 API 变更、数据分布偏移。</div></div>';
+    return h;
+  }
+},
+// Step 7: 最佳实践
+{
+  title: '最佳实践',
+  desc: '总结 Agent 评估与可观测性的关键实践：建立评估清单、集成 CI/CD 流水线、追踪成本、定期回归测试。让评估成为开发流程的一部分，而不是事后补充。',
+  viz: function(){
+    var practices = [
+      {cat:'Eval 清单',items:['☐ 定义核心场景测试集','☐ 设置通过率基线阈值','☐ 包含边界和对抗用例','☐ 版本化测试数据'],color:'#c864ff'},
+      {cat:'CI/CD 集成',items:['☐ PR 触发自动评估','☐ Eval 不过阻止合并','☐ 生成对比报告','☐ 回归测试套件'],color:'#00b8d4'},
+      {cat:'成本追踪',items:['☐ 每次调用记录 Token','☐ 按任务类型聚合成本','☐ 设置预算上限告警','☐ 优化 Prompt 降本'],color:'#ffa500'}
+    ];
+    var h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">';
+    practices.forEach(function(p,i){
+      h += '<div style="background:'+p.color+'0a;border:1px solid '+p.color+'30;border-radius:10px;padding:14px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:'+i*0.12+'s">'
+        +'<div style="color:'+p.color+';font-weight:700;font-size:.85rem;margin-bottom:8px">'+p.cat+'</div>'
+        +'<div style="font-size:.72rem;color:#aaa;line-height:1.9">';
+      p.items.forEach(function(it){ h += it+'<br>'; });
+      h += '</div></div>';
+    });
+    h += '</div>';
+    h += '<div class="note">🏆 黄金法则：If you can\'t measure it, you can\'t improve it. 先建立度量，再做优化。</div>';
+    return h;
+  }
+}
+];
+
+// Quiz data
+const quizData = [
+  {
+    type: 'choice',
+    question: 'Agent 评估比传统模型评估更难的核心原因是什么？',
+    options: [
+      'Agent 使用的模型更大',
+      'Agent 具有非确定性、多步骤执行和工具副作用',
+      'Agent 的训练数据更少',
+      'Agent 只能用人工评估'
+    ],
+    answer: 1,
+    explanation: 'Agent 的非确定性（同一输入不同路径）、多步骤链式执行（错误级联）、工具调用的副作用（不可逆操作）使得评估远比单次模型推理复杂。'
+  },
+  {
+    type: 'choice',
+    question: '可观测性三支柱中，哪个最适合定位 Agent 某次执行中"哪一步出了问题"？',
+    options: [
+      'Metrics（指标）— 聚合统计数据',
+      'Logs（日志）— 详细文本记录',
+      'Traces（链路追踪）— 完整执行路径与时序',
+      'Alerts（告警）— 异常通知'
+    ],
+    answer: 2,
+    explanation: 'Traces 提供完整的执行路径和父子 Span 关系，可通过瀑布图直观看到每一步的耗时和状态，最适合定位"哪一步出了问题"。Metrics 用于发现异常趋势，Logs 用于查看具体细节。'
+  },
+  {
+    type: 'choice',
+    question: '以下哪种评估方法最适合在 CI/CD 流水线中自动化运行？',
+    options: [
+      '人工评审 — 领域专家逐条打分',
+      'A/B Test — 线上分流对比',
+      'Benchmark Suite — 标准化测试集 + 自动化评分',
+      '用户调研 — 收集反馈问卷'
+    ],
+    answer: 2,
+    explanation: 'Benchmark Suite 是预定义的标准化测试集，有明确的输入和期望输出/评判标准，最适合在 CI/CD 中自动运行并阻止不合格的代码合并。人工评审太慢，A/B Test 需要线上流量。'
+  }
+];
+
+// Initialize stepper
+initStepper(stages, {
+  pageId: 'c3-agent-evaluation',
+  enableQuiz: true,
+  quizData: quizData
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>企业级 Agent 部署</title>
+<link rel="stylesheet" href="common.css">
+<style>
+:root { --track-color: #c864ff; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a0f29,#290f29);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.2rem;margin-bottom:8px;background:linear-gradient(90deg,#c864ff,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px;font-size:.95rem}
+.controls{display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#c864ff,#a855f7);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(200,100,255,.4)}
+.btn-p:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-s{background:rgba(255,255,255,.08);color:#ccc;border:1px solid rgba(255,255,255,.15)}
+.btn-s:hover{background:rgba(255,255,255,.15)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa;font-size:.9rem}
+.step-info span{color:#c864ff;font-weight:bold}
+/* Progress bar */
+.progress-wrap{width:100%;max-width:400px;height:5px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin:0 auto 20px}
+.progress-fill-bar{height:100%;background:linear-gradient(90deg,#c864ff,#a855f7);border-radius:4px;transition:width .5s cubic-bezier(.4,0,.2,1);width:0}
+/* Stage card */
+.stage{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:28px;margin-bottom:20px;position:relative;overflow:hidden;animation:stageIn .5s ease}
+@keyframes stageIn{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)}}
+.stage::before{content:'';position:absolute;left:0;top:0;width:4px;height:100%;background:linear-gradient(180deg,#c864ff,#a855f7);border-radius:2px}
+.stage-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.stage-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#c864ff,#a855f7);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.85rem;flex-shrink:0;color:#fff}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.8;font-size:.9rem;margin-bottom:14px}
+.viz{background:rgba(0,0,0,.35);border-radius:10px;padding:20px;min-height:80px;overflow:hidden}
+/* Animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes popIn{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+@keyframes glow{0%,100%{box-shadow:0 0 4px rgba(200,100,255,.3)}50%{box-shadow:0 0 18px rgba(200,100,255,.6)}}
+@keyframes flowRight{0%{transform:translateX(-6px);opacity:0}50%{opacity:1}100%{transform:translateX(6px);opacity:0}}
+.anim-fade{animation:fadeUp .5s ease forwards;opacity:0}
+.anim-pop{animation:popIn .4s ease forwards;opacity:0}
+/* Sandbox layers */
+.sandbox-layer{border-radius:12px;padding:14px;margin:6px;display:flex;align-items:center;justify-content:center;flex-direction:column;animation:fadeUp .5s ease forwards;opacity:0}
+/* Architecture nodes */
+.arch-node{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:.78rem;font-weight:600;animation:popIn .4s ease forwards;opacity:0}
+/* Nav */
+.nav-back{display:block;text-align:center;margin-top:50px;padding:16px;color:#888;text-decoration:none;font-size:.9rem;border:1px solid rgba(255,255,255,.08);border-radius:12px;transition:all .3s}
+.nav-back:hover{color:#c864ff;border-color:rgba(200,100,255,.3);background:rgba(200,100,255,.03)}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Breadcrumb -->
+<nav class="breadcrumb" style="--track-color:#c864ff">
+<a href="index.html">首页</a>
+<span class="separator">›</span>
+<span class="track-badge track-c">C · Agent 能力</span>
+<span class="separator">›</span>
+<span class="current">企业级 Agent 部署</span>
+</nav>
+
+<h1>🏢 企业级 Agent 部署</h1>
+<p class="subtitle">从个人 Agent 到生产级系统 — 安全、合规、可观测、可伸缩</p>
+
+<div class="controls">
+<button class="btn btn-s" id="btnPrev" onclick="prev()">← 上一步</button>
+<button class="btn btn-p" id="btnNext" onclick="next()">下一步 →</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+</div>
+
+<div class="progress-wrap"><div class="progress-fill-bar" id="progressBar"></div></div>
+<div class="step-info">步骤 <span id="stepText">1 / 7</span></div>
+
+<div id="content"></div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="index.html" class="nav-back" style="flex:1;min-width:180px">📚 返回目录</a>
+<a href="agent.html" class="nav-back" style="flex:1;min-width:180px;border-color:rgba(0,229,160,.2);color:#00e5a0">← AI Agent 基础</a>
+</div>
+
+</div>
+
+<!-- Keyboard nav hint -->
+<div class="nav-hint">
+<kbd>←</kbd> <kbd>→</kbd> 切换步骤
+</div>
+
+<!-- Shared scripts -->
+<script src="nav.js"></script>
+<script src="progress.js"></script>
+<script src="quiz.js"></script>
+<script src="stepper.js"></script>
+
+<script>
+// === Quiz Data ===
+const quizData = [
+  {
+    type: 'choice',
+    question: '企业级 Agent 与个人 Agent 最核心的差异是什么？',
+    options: [
+      'Agent 的推理能力不同',
+      '安全合规、多租户隔离与 SLA 保障',
+      '使用的 LLM 模型不同',
+      '支持的工具数量不同'
+    ],
+    answer: 1,
+    explanation: '企业级 Agent 的核心差异在于必须满足安全合规、多租户数据隔离以及生产 SLA 保障，这些是个人 Agent 不需要考虑的。'
+  },
+  {
+    type: 'choice',
+    question: '以下哪项不是企业 Agent 安全沙箱的典型组成部分？',
+    options: [
+      'VPC 网络隔离',
+      '容器级运行时隔离',
+      '工具权限白名单',
+      '增大 Token 上下文窗口'
+    ],
+    answer: 3,
+    explanation: '增大 Token 上下文窗口是模型能力层面的配置，不属于安全沙箱的隔离措施。安全沙箱通常包含网络隔离、容器隔离和权限控制。'
+  },
+  {
+    type: 'choice',
+    question: '企业 Agent 的熔断降级策略主要解决什么问题？',
+    options: [
+      '减少 Token 消耗',
+      '提升模型推理精度',
+      '防止级联故障扩散，保障系统可用性',
+      '加速模型训练速度'
+    ],
+    answer: 2,
+    explanation: '熔断降级的核心目的是当下游服务故障时快速切断请求，防止故障级联扩散，并通过降级策略（如返回缓存结果）维持系统基本可用性。'
+  }
+];
+
+// === Stages ===
+const stages = [
+  {
+    title: '企业 vs 个人 Agent',
+    desc: '企业级 Agent 不仅是"能用"，更是"可信赖"。需要满足安全合规（SOC2/ISO27001）、多租户数据隔离、SLA 保障（99.9%+可用性）、审计追踪等生产级要求。个人 Agent 容错空间大，而企业 Agent 一次失误可能导致数据泄露或合规罚款。',
+    viz: function() {
+      return `<div style="width:100%;display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+        <div style="flex:1;min-width:200px;max-width:280px;background:rgba(200,100,255,.08);border:1px solid rgba(200,100,255,.3);border-radius:10px;padding:16px">
+          <div style="color:#c864ff;font-weight:700;font-size:.9rem;margin-bottom:10px">🏢 企业级</div>
+          <div style="font-size:.78rem;color:#aaa;line-height:1.8">
+            ✅ 多租户数据隔离<br>
+            ✅ SOC2 / ISO27001 合规<br>
+            ✅ SLA 99.9%+ 可用性<br>
+            ✅ 审计日志 + 可追溯<br>
+            ✅ Human-in-the-loop 审批<br>
+            ✅ 成本预算与限额
+          </div>
+        </div>
+        <div style="flex:1;min-width:200px;max-width:280px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:16px">
+          <div style="color:#888;font-weight:700;font-size:.9rem;margin-bottom:10px">👤 个人级</div>
+          <div style="font-size:.78rem;color:#666;line-height:1.8">
+            ○ 单用户无隔离需求<br>
+            ○ 无合规要求<br>
+            ○ 偶尔不可用可接受<br>
+            ○ 无审计需求<br>
+            ○ 用户自行判断<br>
+            ○ 按量付费即可
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:10px 14px;background:rgba(200,100,255,.05);border-left:3px solid rgba(200,100,255,.4);border-radius:0 8px 8px 0;font-size:.8rem;color:#bbb">
+        💡 <strong style="color:#c864ff">关键差异：</strong>企业 Agent 的 failure mode 不是"不方便"而是"业务损失+法律风险"
+      </div>`;
+    }
+  },
+  {
+    title: '安全沙箱',
+    desc: '安全沙箱是企业 Agent 的第一道防线。通过多层隔离（网络 → 容器 → 运行时 → 工具），确保 Agent 即使"越狱"也无法突破边界。工具调用通过白名单机制严格管控，每次执行在独立容器/Lambda 中运行。',
+    viz: function() {
+      return `<div style="width:100%;text-align:center">
+        <div style="max-width:500px;margin:0 auto">
+          <!-- VPC -->
+          <div class="sandbox-layer" style="background:rgba(200,100,255,.06);border:2px solid rgba(200,100,255,.3);animation-delay:0s">
+            <div style="font-size:.7rem;color:#c864ff;font-weight:600;margin-bottom:4px">🌐 VPC 网络隔离层</div>
+            <!-- Container -->
+            <div class="sandbox-layer" style="background:rgba(168,85,247,.08);border:2px solid rgba(168,85,247,.3);width:90%;animation-delay:.2s">
+              <div style="font-size:.7rem;color:#a855f7;font-weight:600;margin-bottom:4px">📦 Container / Lambda 隔离</div>
+              <!-- Runtime -->
+              <div class="sandbox-layer" style="background:rgba(139,92,246,.08);border:2px solid rgba(139,92,246,.3);width:85%;animation-delay:.4s">
+                <div style="font-size:.7rem;color:#8b5cf6;font-weight:600;margin-bottom:4px">⚙️ Runtime 沙箱 (seccomp/gVisor)</div>
+                <!-- Agent -->
+                <div class="sandbox-layer" style="background:rgba(124,58,237,.12);border:2px solid rgba(124,58,237,.4);width:80%;animation-delay:.6s">
+                  <div style="font-size:.7rem;color:#7c3aed;font-weight:600">🤖 Agent 执行空间</div>
+                  <div style="font-size:.65rem;color:#888;margin-top:4px">工具白名单 | 文件只读 | 无网络出站</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px;font-size:.72rem;color:#888;display:flex;justify-content:center;gap:12px;flex-wrap:wrap">
+            <span style="color:#c864ff">外 →</span>
+            <span>VPC</span><span>→</span><span>Container</span><span>→</span><span>Runtime</span><span>→</span><span>Agent</span>
+            <span style="color:#c864ff">← 内</span>
+          </div>
+        </div>
+      </div>`;
+    }
+  },
+  {
+    title: '权限控制',
+    desc: '最小权限原则（Least Privilege）+ 动态授权 + Human-in-the-loop 审批。Agent 默认无权限，按需授予；高风险操作（如删除数据、发送邮件）需要人类实时审批；权限可按角色/场景动态调整。',
+    viz: function() {
+      return `<div style="width:100%;text-align:center">
+        <div style="display:flex;flex-direction:column;gap:10px;max-width:500px;margin:0 auto">
+          <div class="anim-fade" style="display:flex;align-items:center;gap:10px;background:rgba(46,213,115,.08);border:1px solid rgba(46,213,115,.3);border-radius:8px;padding:12px;animation-delay:.1s">
+            <div style="font-size:1.1rem">🔒</div>
+            <div style="text-align:left"><div style="color:#2ed573;font-size:.82rem;font-weight:600">最小权限</div><div style="color:#888;font-size:.72rem">默认拒绝，按需申请。只授予完成任务所需的最小权限集</div></div>
+          </div>
+          <div class="anim-fade" style="display:flex;align-items:center;gap:10px;background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.3);border-radius:8px;padding:12px;animation-delay:.3s">
+            <div style="font-size:1.1rem">⚡</div>
+            <div style="text-align:left"><div style="color:#ffa500;font-size:.82rem;font-weight:600">动态授权</div><div style="color:#888;font-size:.72rem">权限随上下文动态调整：工作时间 vs 非工作时间、内网 vs 外网</div></div>
+          </div>
+          <div class="anim-fade" style="display:flex;align-items:center;gap:10px;background:rgba(255,71,87,.08);border:1px solid rgba(255,71,87,.3);border-radius:8px;padding:12px;animation-delay:.5s">
+            <div style="font-size:1.1rem">👤</div>
+            <div style="text-align:left"><div style="color:#ff4757;font-size:.82rem;font-weight:600">Human-in-the-loop</div><div style="color:#888;font-size:.72rem">高风险操作（删除、支付、外发）需人类审批确认后执行</div></div>
+          </div>
+          <div class="anim-fade" style="display:flex;align-items:center;gap:10px;background:rgba(0,184,212,.08);border:1px solid rgba(0,184,212,.3);border-radius:8px;padding:12px;animation-delay:.7s">
+            <div style="font-size:1.1rem">📋</div>
+            <div style="text-align:left"><div style="color:#00b8d4;font-size:.82rem;font-weight:600">审计追踪</div><div style="color:#888;font-size:.72rem">每次权限授予/使用/拒绝全部记录，支持事后审计与合规检查</div></div>
+          </div>
+        </div>
+      </div>`;
+    }
+  },
+  {
+    title: '成本管理',
+    desc: '企业 Agent 需要精细的成本控制：Token 预算（每次调用/每用户/每天）、超时控制（防止 Agent 无限循环）、并发限制（防止雪崩）、计费追踪（按部门/项目归因）。没有成本管控的 Agent 可能一夜烧完全年预算。',
+    viz: function() {
+      return `<div style="width:100%;text-align:center">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:550px;margin:0 auto">
+          <div class="anim-fade" style="background:rgba(200,100,255,.08);border:1px solid rgba(200,100,255,.3);border-radius:10px;padding:14px;animation-delay:.1s">
+            <div style="font-size:1.2rem;margin-bottom:6px">🎫</div>
+            <div style="color:#c864ff;font-weight:600;font-size:.82rem">Token 预算</div>
+            <div style="color:#888;font-size:.7rem;margin-top:4px">每次调用 ≤ 8K tokens<br>每用户/天 ≤ 100K</div>
+          </div>
+          <div class="anim-fade" style="background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.3);border-radius:10px;padding:14px;animation-delay:.2s">
+            <div style="font-size:1.2rem;margin-bottom:6px">⏱️</div>
+            <div style="color:#ffa500;font-weight:600;font-size:.82rem">超时控制</div>
+            <div style="color:#888;font-size:.7rem;margin-top:4px">单步 ≤ 30s<br>总任务 ≤ 5min</div>
+          </div>
+          <div class="anim-fade" style="background:rgba(0,184,212,.08);border:1px solid rgba(0,184,212,.3);border-radius:10px;padding:14px;animation-delay:.3s">
+            <div style="font-size:1.2rem;margin-bottom:6px">🚦</div>
+            <div style="color:#00b8d4;font-weight:600;font-size:.82rem">并发限制</div>
+            <div style="color:#888;font-size:.7rem;margin-top:4px">每用户 ≤ 3 并发<br>全局 ≤ 100 并发</div>
+          </div>
+          <div class="anim-fade" style="background:rgba(46,213,115,.08);border:1px solid rgba(46,213,115,.3);border-radius:10px;padding:14px;animation-delay:.4s">
+            <div style="font-size:1.2rem;margin-bottom:6px">💰</div>
+            <div style="color:#2ed573;font-weight:600;font-size:.82rem">计费追踪</div>
+            <div style="color:#888;font-size:.7rem;margin-top:4px">按部门/项目归因<br>月度预算告警</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:10px;background:rgba(255,71,87,.06);border:1px solid rgba(255,71,87,.2);border-radius:8px;font-size:.75rem;color:#ff6b81">
+          ⚠️ 真实案例：某公司 Agent 死循环调用 GPT-4，一晚产生 $12,000 费用
+        </div>
+      </div>`;
+    }
+  },
+  {
+    title: '规模化部署',
+    desc: '从单 Agent 到多 Agent 编排平台：使用消息队列（SQS/EventBridge）解耦请求处理、异步执行长任务、Auto Scaling 应对流量波动。Orchestrator 模式协调多 Agent 并行工作，资源池化提升利用率。',
+    viz: function() {
+      return `<div style="width:100%;text-align:center">
+        <div style="display:flex;flex-direction:column;gap:8px;max-width:520px;margin:0 auto">
+          <!-- Users -->
+          <div class="anim-fade" style="display:flex;justify-content:center;gap:8px;animation-delay:.1s">
+            <span style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#c864ff">👤 User 1</span>
+            <span style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#c864ff">👤 User 2</span>
+            <span style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:6px 12px;font-size:.72rem;color:#c864ff">👤 ...</span>
+          </div>
+          <div style="color:rgba(200,100,255,.4);font-size:.8rem">↓ API Gateway + Rate Limiting</div>
+          <!-- Queue -->
+          <div class="anim-fade" style="background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.3);border-radius:8px;padding:10px;font-size:.78rem;color:#ffa500;font-weight:600;animation-delay:.3s">
+            📬 消息队列 (SQS / EventBridge)
+          </div>
+          <div style="color:rgba(200,100,255,.4);font-size:.8rem">↓ 异步分发</div>
+          <!-- Agent Pool -->
+          <div class="anim-fade" style="background:rgba(0,184,212,.06);border:1px solid rgba(0,184,212,.25);border-radius:10px;padding:12px;animation-delay:.5s">
+            <div style="font-size:.75rem;color:#00b8d4;font-weight:600;margin-bottom:6px">🤖 Agent Worker Pool (Auto Scaling)</div>
+            <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+              <span style="background:rgba(46,213,115,.1);border:1px solid rgba(46,213,115,.3);border-radius:4px;padding:4px 8px;font-size:.65rem;color:#2ed573">Worker 1</span>
+              <span style="background:rgba(46,213,115,.1);border:1px solid rgba(46,213,115,.3);border-radius:4px;padding:4px 8px;font-size:.65rem;color:#2ed573">Worker 2</span>
+              <span style="background:rgba(46,213,115,.1);border:1px solid rgba(46,213,115,.3);border-radius:4px;padding:4px 8px;font-size:.65rem;color:#2ed573">Worker 3</span>
+              <span style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:4px;padding:4px 8px;font-size:.65rem;color:#ffa500">+ Scaling</span>
+            </div>
+          </div>
+          <div style="color:rgba(200,100,255,.4);font-size:.8rem">↓ 结果回写</div>
+          <div class="anim-fade" style="background:rgba(200,100,255,.06);border:1px solid rgba(200,100,255,.25);border-radius:8px;padding:8px;font-size:.75rem;color:#c864ff;animation-delay:.7s">
+            📊 结果存储 + 回调通知 + Metrics
+          </div>
+        </div>
+      </div>`;
+    }
+  },
+  {
+    title: '运维与故障处理',
+    desc: '生产环境必须有完善的故障处理机制：熔断器（Circuit Breaker）防止级联故障；降级策略在服务不可用时提供兜底响应；回退策略在 Agent 出错时切换到简单规则引擎；事故响应有 Runbook 指导。',
+    viz: function() {
+      return `<div style="width:100%;text-align:center">
+        <div style="display:flex;flex-direction:column;gap:10px;max-width:500px;margin:0 auto">
+          <!-- Circuit Breaker -->
+          <div class="anim-fade" style="background:rgba(255,71,87,.06);border:1px solid rgba(255,71,87,.25);border-radius:10px;padding:14px;animation-delay:.1s">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:1rem">🔴</span>
+              <span style="color:#ff4757;font-weight:600;font-size:.85rem">熔断降级 (Circuit Breaker)</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;justify-content:center;font-size:.7rem;color:#888">
+              <span style="background:rgba(46,213,115,.15);padding:4px 8px;border-radius:4px;color:#2ed573">Closed ✓</span>
+              <span>→ 错误率↑ →</span>
+              <span style="background:rgba(255,165,0,.15);padding:4px 8px;border-radius:4px;color:#ffa500">Half-Open</span>
+              <span>→ 持续失败 →</span>
+              <span style="background:rgba(255,71,87,.15);padding:4px 8px;border-radius:4px;color:#ff4757">Open 🚫</span>
+            </div>
+          </div>
+          <!-- Fallback -->
+          <div class="anim-fade" style="background:rgba(255,165,0,.06);border:1px solid rgba(255,165,0,.25);border-radius:10px;padding:14px;animation-delay:.3s">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:1rem">🔄</span>
+              <span style="color:#ffa500;font-weight:600;font-size:.85rem">回退策略 (Fallback)</span>
+            </div>
+            <div style="font-size:.72rem;color:#888;line-height:1.6">
+              Agent 失败 → 尝试更简单的模型 → 规则引擎兜底 → 返回缓存结果 → 转人工
+            </div>
+          </div>
+          <!-- Incident Response -->
+          <div class="anim-fade" style="background:rgba(0,184,212,.06);border:1px solid rgba(0,184,212,.25);border-radius:10px;padding:14px;animation-delay:.5s">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:1rem">🚨</span>
+              <span style="color:#00b8d4;font-weight:600;font-size:.85rem">事故响应 (Incident Response)</span>
+            </div>
+            <div style="font-size:.72rem;color:#888;line-height:1.6">
+              监控告警 → PagerDuty 通知 → Runbook 执行 → 根因分析 → 复盘改进
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+  },
+  {
+    title: '案例：企业 Agent 平台架构',
+    desc: '完整的企业 Agent 平台参考架构：从用户请求入口到 Agent 执行、再到结果返回的完整链路。包含安全层、编排层、执行层、数据层和可观测层。',
+    viz: function() {
+      var nodes = [
+        {label:'👤 用户/API',color:'#c864ff',delay:0},
+        {label:'🛡️ WAF + API GW',color:'#ff4757',delay:.3},
+        {label:'🔐 Auth (IAM/OAuth)',color:'#ff4757',delay:.5},
+        {label:'📋 Orchestrator',color:'#ffa500',delay:.8},
+        {label:'📬 Task Queue',color:'#ffa500',delay:1.0},
+        {label:'🤖 Agent Pool',color:'#2ed573',delay:1.3},
+        {label:'🧠 LLM (Bedrock)',color:'#00b8d4',delay:1.5},
+        {label:'🔧 Tool Registry',color:'#00b8d4',delay:1.7},
+        {label:'📦 Sandbox Runtime',color:'#a855f7',delay:2.0},
+        {label:'💾 Vector DB + Cache',color:'#ffc800',delay:2.2},
+        {label:'📊 Metrics + Traces',color:'#888',delay:2.5},
+        {label:'🚨 Alerting',color:'#888',delay:2.7}
+      ];
+      var html = '<div style="width:100%"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;max-width:600px;margin:0 auto">';
+      nodes.forEach(function(n) {
+        html += '<div class="arch-node" style="background:'+n.color+'12;border:1px solid '+n.color+'40;color:'+n.color+';animation-delay:'+n.delay+'s;justify-content:center">'+n.label+'</div>';
+      });
+      html += '</div>';
+      html += '<div style="margin-top:16px;padding:12px;background:rgba(200,100,255,.05);border:1px solid rgba(200,100,255,.2);border-radius:8px">';
+      html += '<div style="font-size:.75rem;color:#c864ff;font-weight:600;margin-bottom:6px">🏗️ 架构分层</div>';
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:.68rem">';
+      html += '<span style="background:rgba(255,71,87,.1);padding:3px 8px;border-radius:4px;color:#ff4757">安全层</span>';
+      html += '<span style="background:rgba(255,165,0,.1);padding:3px 8px;border-radius:4px;color:#ffa500">编排层</span>';
+      html += '<span style="background:rgba(46,213,115,.1);padding:3px 8px;border-radius:4px;color:#2ed573">执行层</span>';
+      html += '<span style="background:rgba(0,184,212,.1);padding:3px 8px;border-radius:4px;color:#00b8d4">能力层</span>';
+      html += '<span style="background:rgba(255,200,0,.1);padding:3px 8px;border-radius:4px;color:#ffc800">数据层</span>';
+      html += '<span style="background:rgba(136,136,136,.1);padding:3px 8px;border-radius:4px;color:#888">可观测层</span>';
+      html += '</div></div></div>';
+      return html;
+    }
+  }
+];
+
+// === Initialize Stepper ===
+initStepper(stages, {
+  pageId: 'c4-enterprise-agent',
+  enableQuiz: true,
+  quizData: quizData
+});
+</script>
+</body>
+</html>

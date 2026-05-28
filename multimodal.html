@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多模态 AI — Vision-Language & Image Generation</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a2a3a,#2a1a2a);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#e040fb,#00d2ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#e040fb,#00d2ff);color:#000}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(224,64,251,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#e040fb;font-weight:bold}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1)}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(224,64,251,.4);box-shadow:0 0 25px rgba(224,64,251,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(224,64,251,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#e040fb,#00d2ff);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0;color:#000}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.tok{display:inline-flex;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;font-size:.85rem;animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tok-in{background:rgba(224,64,251,.15);border:1px solid rgba(224,64,251,.4);color:#e040fb}
+.tok-em{background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);color:#00d2ff}
+.tok-out{background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);color:#00ff88}
+.tok-id{background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);color:#ffa500}
+.tok-warn{background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);color:#ff6b6b}
+.note{background:rgba(224,64,251,.05);border-left:3px solid rgba(224,64,251,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>多模态 AI 全景</h1>
+<p class="subtitle">Vision-Language Models · Image Generation · 多模态 Agent</p>
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>GPT-4o 可以同时理解文字、图片、音频和视频，是最强的多模态模型。它能看懂手写公式、分析图表、理解 meme，甚至实时语音对话——这是 AI 的"五感"时刻。
+</div>
+
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">10</span></div>
+<div id="pipeline"></div>
+
+<!-- ===== 核心概念深入 Section ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">核心概念深入</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">费曼式直觉解释 — 用类比理解多模态核心原理</p>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:30px">
+<!-- Why multimodal is hard -->
+<div style="flex:1;min-width:260px;max-width:500px;background:rgba(224,64,251,.05);border:1px solid rgba(224,64,251,.25);border-radius:14px;padding:22px;margin-bottom:16px">
+<div style="font-weight:700;color:#e040fb;margin-bottom:12px;font-size:1rem">🌐 为什么多模态很难？</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-bottom:12px">
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+想象一个国际会议：<br>
+• 文本 = 说中文的人<br>
+• 图像 = 说法语的人<br>
+• 音频 = 说日语的人<br><br>
+<span style="color:#e040fb">问题：</span>他们各自有完全不同的"语法"和"词汇"<br>
+<span style="color:#00d2ff">解决：</span>需要一个"翻译官"把所有语言翻译成同一种通用语言（向量空间）
+</div>
+</div>
+<div style="font-size:.78rem;color:#666;line-height:1.5">不同模态的数据结构完全不同：文本是离散 token 序列，图像是连续像素矩阵，音频是时域波形。对齐它们是核心挑战。</div>
+</div>
+
+<!-- CLIP contrastive learning -->
+<div style="flex:1;min-width:260px;max-width:500px;background:rgba(0,210,255,.05);border:1px solid rgba(0,210,255,.25);border-radius:14px;padding:22px;margin-bottom:16px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:12px;font-size:1rem">🎯 CLIP 对比学习直觉</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Apple 的 Ferret、Google Gemini、Meta LLaMA 3.2 Vision 都使用了 CLIP 式对齐作为多模态理解的基础。这项 2021 年的技术奠定了整个多模态 AI 的地基。
+</div>
+
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-bottom:12px">
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+想象一个<span style="color:#00d2ff">配对游戏</span>：<br><br>
+桌上有 100 张图片和 100 段描述<br>
+任务：哪段描述对应哪张图？<br><br>
+<span style="color:#00ff88">训练目标：</span><br>
+✅ "一只橘猫在沙发上" ↔ 🐱🛋️ → 拉近<br>
+❌ "一只橘猫在沙发上" ↔ 🏔️🌊 → 推远<br><br>
+<span style="color:#ffa500">结果：</span>图像和文本被映射到同一个空间，语义相近的配对距离近
+</div>
+</div>
+<div style="font-size:.78rem;color:#666;line-height:1.5">CLIP 用 4 亿图文对训练，学会了通用的视觉-语言对齐。这个对齐空间是后续所有多模态模型的基础。</div>
+</div>
+
+<!-- Diffusion intuition -->
+<div style="flex:1;min-width:260px;max-width:500px;background:rgba(0,255,136,.05);border:1px solid rgba(0,255,136,.25);border-radius:14px;padding:22px;margin-bottom:16px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:12px;font-size:1rem">🎨 Diffusion：为什么加噪再去噪能生成图？</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-bottom:12px">
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<span style="color:#00ff88">类比：雕塑家</span><br><br>
+一块大理石（纯噪声）里"藏着"一座雕像<br>
+雕塑家的工作 = 一点点去掉多余的石头<br><br>
+<span style="color:#ffa500">Diffusion 过程：</span><br>
+正向：清晰图片 → 逐步加噪 → 纯噪声<br>
+反向：纯噪声 → 逐步去噪 → 清晰图片<br><br>
+模型学的是：<span style="color:#e040fb">"每一步该去掉哪些噪声"</span>
+</div>
+</div>
+<div style="font-size:.78rem;color:#666;line-height:1.5">关键洞察：去噪比直接生成容易得多。每步只需做微小修正，1000 步微小修正累积起来就能从噪声中"雕刻"出图像。</div>
+</div>
+
+<!-- Patch embedding -->
+<div style="flex:1;min-width:260px;max-width:500px;background:rgba(255,165,0,.05);border:1px solid rgba(255,165,0,.25);border-radius:14px;padding:22px;margin-bottom:16px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:12px;font-size:1rem">🧩 Patch Embedding：图像如何变成 Token</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-bottom:12px">
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<span style="color:#ffa500">类比：拼图</span><br><br>
+把一张照片切成 16×16 的小方块（patch）<br>
+每个小方块 = 一个"视觉单词"<br><br>
+224×224 图片 → 14×14 = <span style="color:#e040fb">196 个 patch</span><br>
+每个 patch → 线性投影 → 一个向量<br><br>
+现在图像变成了一个<span style="color:#00d2ff">"视觉句子"</span><br>
+可以像处理文本一样用 Transformer 处理！
+</div>
+</div>
+<div style="font-size:.78rem;color:#666;line-height:1.5">ViT (Vision Transformer) 的核心思想：把图像当作一系列 patch 的序列，复用 NLP 中成熟的 Transformer 架构。</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 替代方案与架构对比 Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">替代方案与架构对比</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">不同架构的设计哲学与适用场景</p>
+
+<!-- Vision-Language Architectures -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:30px;overflow-x:auto">
+<div style="font-weight:700;color:#e040fb;margin-bottom:16px;font-size:1rem;text-align:center">👁️ Vision-Language 架构对比</div>
+<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">模型</th>
+<th style="padding:10px;text-align:center;color:#e040fb">架构方式</th>
+<th style="padding:10px;text-align:center;color:#00d2ff">图像接入方式</th>
+<th style="padding:10px;text-align:center;color:#ffa500">特点</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">LLaVA</td>
+<td style="padding:10px;text-align:center">线性投影 + LLM</td>
+<td style="padding:10px;text-align:center;color:#666">ViT → MLP → LLM tokens</td>
+<td style="padding:10px;text-align:center;color:#666">简单高效，开源友好</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">Flamingo</td>
+<td style="padding:10px;text-align:center">Cross-attention 注入</td>
+<td style="padding:10px;text-align:center;color:#666">Perceiver → 交叉注意力层</td>
+<td style="padding:10px;text-align:center;color:#666">Few-shot 能力强</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">GPT-4V</td>
+<td style="padding:10px;text-align:center">原生多模态（推测）</td>
+<td style="padding:10px;text-align:center;color:#666">端到端训练，细节未公开</td>
+<td style="padding:10px;text-align:center;color:#666">综合能力最强</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa;font-weight:600">Gemini</td>
+<td style="padding:10px;text-align:center">原生多模态</td>
+<td style="padding:10px;text-align:center;color:#666">从头多模态预训练</td>
+<td style="padding:10px;text-align:center;color:#666">长上下文，多模态原生</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Image Generation Comparison -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:30px;overflow-x:auto">
+<div style="font-weight:700;color:#00ff88;margin-bottom:16px;font-size:1rem;text-align:center">🎨 图像生成架构对比</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Midjourney V6、DALL-E 3、Stable Diffusion XL 都是 Diffusion 模型的商业化产品。Amazon Nova Canvas 和 Titan Image 则是 AWS 提供的企业级图像生成服务。
+</div>
+
+<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">方法</th>
+<th style="padding:10px;text-align:center;color:#00ff88">原理</th>
+<th style="padding:10px;text-align:center;color:#ffa500">代表模型</th>
+<th style="padding:10px;text-align:center;color:#888">优劣</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">Diffusion</td>
+<td style="padding:10px;text-align:center">逐步去噪</td>
+<td style="padding:10px;text-align:center;color:#666">SD, DALL-E 2/3, Midjourney</td>
+<td style="padding:10px;text-align:center;color:#666">质量高，速度慢</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">GAN</td>
+<td style="padding:10px;text-align:center">生成器 vs 判别器对抗</td>
+<td style="padding:10px;text-align:center;color:#666">StyleGAN, BigGAN</td>
+<td style="padding:10px;text-align:center;color:#666">速度快，训练不稳定</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">Autoregressive</td>
+<td style="padding:10px;text-align:center">逐 token 预测</td>
+<td style="padding:10px;text-align:center;color:#666">DALL-E 1, Parti</td>
+<td style="padding:10px;text-align:center;color:#666">统一架构，分辨率受限</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa;font-weight:600">Flow Matching</td>
+<td style="padding:10px;text-align:center">学习概率流 ODE</td>
+<td style="padding:10px;text-align:center;color:#666">Stable Diffusion 3, Flux</td>
+<td style="padding:10px;text-align:center;color:#666">训练稳定，采样高效</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Video Generation -->
+<div style="background:rgba(0,210,255,.03);border:1px solid rgba(0,210,255,.2);border-radius:14px;padding:24px;margin-bottom:30px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:16px;font-size:1rem;text-align:center">🎬 视频生成：Sora 与时序一致性</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:16px">
+<div style="font-size:.9rem;color:#00d2ff;font-weight:600;margin-bottom:8px">Sora 架构思路</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">视频 = 时空 patch 序列<br>DiT (Diffusion Transformer)<br>在 latent space 做去噪<br>支持可变时长/分辨率</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:16px">
+<div style="font-size:.9rem;color:#ffa500;font-weight:600;margin-bottom:8px">核心挑战</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">时序一致性（人物不变形）<br>物理规律遵循<br>长视频连贯性<br>计算成本极高</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:16px">
+<div style="font-size:.9rem;color:#00ff88;font-weight:600;margin-bottom:8px">开源 vs 闭源</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">闭源：Sora, Runway, Pika<br>开源：CogVideo, Open-Sora<br>差距：质量和一致性<br>趋势：快速追赶中</div>
+</div>
+</div>
+</div>
+
+<!-- Open vs Closed source -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:30px;overflow-x:auto">
+<div style="font-weight:700;color:#ffa500;margin-bottom:16px;font-size:1rem;text-align:center">🔓 开源 vs 闭源多模态模型</div>
+<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">类别</th>
+<th style="padding:10px;text-align:center;color:#00ff88">开源</th>
+<th style="padding:10px;text-align:center;color:#e040fb">闭源</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">图像理解</td>
+<td style="padding:10px;text-align:center;color:#666">LLaVA, InternVL, Qwen-VL</td>
+<td style="padding:10px;text-align:center;color:#666">GPT-4V, Gemini, Claude</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">图像生成</td>
+<td style="padding:10px;text-align:center;color:#666">Stable Diffusion, Flux</td>
+<td style="padding:10px;text-align:center;color:#666">DALL-E 3, Midjourney</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">视频生成</td>
+<td style="padding:10px;text-align:center;color:#666">CogVideo, Open-Sora</td>
+<td style="padding:10px;text-align:center;color:#666">Sora, Runway Gen-3</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa;font-weight:600">语音</td>
+<td style="padding:10px;text-align:center;color:#666">Whisper, Bark, XTTS</td>
+<td style="padding:10px;text-align:center;color:#666">GPT-4o Voice, ElevenLabs</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<!-- ===== FAQ Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">常见问题</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">多模态 AI 的关键疑问解答</p>
+
+<div style="display:flex;flex-direction:column;gap:16px;max-width:800px;margin:0 auto">
+<!-- Q1 -->
+<div style="background:rgba(224,64,251,.03);border:1px solid rgba(224,64,251,.2);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#e040fb;margin-bottom:10px;font-size:.95rem">❓ 为什么 LLM 不能直接"看"图片，必须要 Vision Encoder？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7">LLM 的输入是 token embedding（离散符号的向量表示），而图像是连续的像素矩阵。两者的"语言"完全不同。Vision Encoder（如 ViT）的作用是把图像翻译成 LLM 能理解的向量序列——就像把法语翻译成中文，让只懂中文的人也能理解法语内容。没有这个翻译步骤，LLM 面对的就是一堆无意义的数字。</div>
+</div>
+
+<!-- Q2 -->
+<div style="background:rgba(0,210,255,.03);border:1px solid rgba(0,210,255,.2);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:10px;font-size:.95rem">❓ 多模态训练比纯文本贵多少？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7">通常贵 3-10 倍。原因：① 图像/视频数据量大（一张 224×224 图 = 196 个 token，一段视频可能上万 token）；② 需要额外的 Vision Encoder 参数；③ 对齐训练需要高质量图文配对数据（收集成本高）；④ 视频训练的显存需求极大。不过，像 LLaVA 这样的方案通过冻结预训练组件 + 只训练连接层，大幅降低了微调成本（几百美元即可）。</div>
+</div>
+
+<!-- Q3 -->
+<div style="background:rgba(0,255,136,.03);border:1px solid rgba(0,255,136,.2);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:.95rem">❓ 我能微调一个 Vision-Language 模型吗？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7">可以，而且比你想象的容易。推荐路径：① 选择开源基座（LLaVA、Qwen-VL、InternVL）；② 准备图文指令数据（图片 + 问答对）；③ 用 LoRA 微调，只需 1-2 张 A100（约 40-80GB 显存）；④ 训练几小时即可获得领域专用的视觉理解模型。关键是数据质量 > 数据数量，几千条高质量样本就能显著提升特定任务表现。</div>
+</div>
+
+<!-- Q4 -->
+<div style="background:rgba(255,165,0,.03);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:.95rem">❓ 图像生成如何保持角色/风格一致性？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7">这是当前最大挑战之一。主流方案：① <b>IP-Adapter</b>：输入参考图，提取风格/角色特征注入生成过程；② <b>LoRA 训练</b>：用同一角色的多张图片训练专属 LoRA，生成时加载；③ <b>一致性种子</b>：固定 seed + 相似 prompt 结构；④ <b>Reference-only</b>：用参考图的注意力特征引导生成。实践中通常组合使用，但完美一致性仍是开放问题。</div>
+</div>
+
+<!-- Q5 -->
+<div style="background:rgba(100,200,255,.03);border:1px solid rgba(100,200,255,.2);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#64c8ff;margin-bottom:10px;font-size:.95rem">❓ 多模态 AI 的未来方向是什么？</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.7">几个确定性趋势：① <b>原生多模态</b>：不再是"拼接"，而是从预训练就统一所有模态（Gemini 方向）；② <b>实时交互</b>：GPT-4o 式的实时语音+视觉对话；③ <b>世界模型</b>：通过视频理解物理规律，为机器人/自动驾驶提供"常识"；④ <b>生成统一</b>：一个模型同时理解和生成所有模态（理解图片 + 生成图片 + 理解语音 + 生成语音）；⑤ <b>多模态 Agent</b>：能看屏幕、操作 GUI 的自主智能体。</div>
+</div>
+</div>
+</div>
+
+<div style="margin-top:30px;padding:20px;background:rgba(255,153,0,.05);border:1px solid rgba(255,153,0,.25);border-radius:14px">
+<div style="font-weight:700;color:#ff9900;margin-bottom:12px;font-size:1rem">☁️ AWS 服务映射</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.8">
+• Amazon Nova Canvas — AWS 自研图像生成模型<br>• Amazon Nova Reel — 视频生成模型<br>• Amazon Bedrock 多模态 — Claude 3.5 Sonnet 支持图文理解，Nova 支持图文视频<br>• Amazon Rekognition — 传统 CV 方案，适合人脸/标签等固定任务
+</div>
+</div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="index.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:10px;color:#ccc;font-size:.9rem">📚 返回目录</a>
+<a href="rag.html" style="text-decoration:none;padding:14px 24px;background:rgba(100,200,255,.08);border:1px solid rgba(100,200,255,.4);border-radius:10px;color:#64c8ff;font-size:.9rem">← RAG</a>
+<a href="rl-reasoning.html" style="text-decoration:none;padding:14px 24px;background:rgba(224,64,251,.08);border:1px solid rgba(224,64,251,.4);border-radius:10px;color:#e040fb;font-size:.9rem">RL 推理 →</a>
+</div>
+</div>
+
+</div>
+
+<script>
+const stages=[
+{n:1,title:"什么是多模态？",desc:"多模态 AI 能同时处理多种信息形式：文本、图像、音频、视频。人类天生是多模态的（看、听、说、写），多模态 AI 让机器也具备这种综合感知能力。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">';const modes=[{icon:"📝",name:"文本",c:"#e040fb"},{icon:"🖼️",name:"图像",c:"#00d2ff"},{icon:"🔊",name:"音频",c:"#00ff88"},{icon:"🎬",name:"视频",c:"#ffa500"}];modes.forEach((m,i)=>{h+=`<div style="background:${m.c}15;border:1px solid ${m.c}40;border-radius:10px;padding:12px 16px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s"><div style="font-size:1.5rem">${m.icon}</div><div style="font-size:.8rem;color:${m.c};margin-top:4px">${m.name}</div></div>`;if(i<modes.length-1)h+=`<span style="color:rgba(255,255,255,.2);font-size:1.2rem">+</span>`});h+='</div><div class="note">单模态 AI 只能处理一种信息，多模态 AI 能像人一样综合理解多种信息</div></div>';return h}},
+{n:2,title:"Vision Encoder — 图像变向量",desc:"图像不能直接输入 LLM。Vision Encoder（如 ViT）将图像切成 16×16 的小块（patch），每个 patch 通过线性投影变成一个向量，再用 Transformer 处理这些「视觉 token」。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,210,255,.1);border:1px solid rgba(0,210,255,.3);border-radius:8px;padding:10px 14px;animation:fadeUp .4s ease forwards;opacity:0"><div style="font-size:.75rem;color:#888">输入图像</div><div style="font-size:.9rem;color:#00d2ff">224×224 像素</div></div><span style="color:rgba(255,255,255,.3)">→</span><div style="background:rgba(224,64,251,.1);border:1px solid rgba(224,64,251,.3);border-radius:8px;padding:10px 14px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.15s"><div style="font-size:.75rem;color:#888">切成 patch</div><div style="font-size:.9rem;color:#e040fb">14×14 = 196 块</div></div><span style="color:rgba(255,255,255,.3)">→</span><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:8px;padding:10px 14px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.3s"><div style="font-size:.75rem;color:#888">Transformer 编码</div><div style="font-size:.9rem;color:#00ff88">196 个向量</div></div></div><div style="margin-top:10px;font-size:.78rem;color:#888">ViT = Vision Transformer，把图像当作"视觉句子"来处理</div></div></div>'},
+{n:3,title:"跨模态对齐 (CLIP)",desc:"CLIP 通过对比学习让文本和图像「说同一种语言」。训练时，正确的图文配对被拉近，错误配对被推远。最终文本和图像被映射到同一个向量空间。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center"><div style="display:flex;flex-direction:column;gap:4px;align-items:center"><div style="background:rgba(224,64,251,.1);border:1px solid rgba(224,64,251,.3);border-radius:6px;padding:6px 12px;font-size:.78rem;color:#e040fb">Text Encoder</div><div style="font-size:.7rem;color:#888">"一只猫在沙发上"</div></div><div style="display:flex;flex-direction:column;gap:4px;align-items:center"><div style="background:rgba(0,210,255,.1);border:1px solid rgba(0,210,255,.3);border-radius:6px;padding:6px 12px;font-size:.78rem;color:#00d2ff">Image Encoder</div><div style="font-size:.7rem;color:#888">🐱🛋️ 图片</div></div></div><div style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:5px 10px;font-size:.72rem;color:#00ff88;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.2s">✅ 匹配对 → 余弦相似度↑</div><div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:6px;padding:5px 10px;font-size:.72rem;color:#ff6b6b;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.35s">❌ 不匹配 → 余弦相似度↓</div></div></div><div class="note">CLIP 用 4 亿图文对训练，是多模态 AI 的基石</div></div>'},
+{n:4,title:"Vision-Language Model 架构",desc:"将图像 token 注入 LLM 的方式：LLaVA 用线性投影将视觉向量直接拼接到文本 token 序列中；GPT-4V 可能采用更深度的原生融合。核心思想：让 LLM 把图像当作「特殊的文字」来处理。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:500px;margin:0 auto"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;font-size:.75rem"><div style="background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);border-radius:4px;padding:4px 8px;color:#00d2ff">[IMG_1]</div><div style="background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);border-radius:4px;padding:4px 8px;color:#00d2ff">[IMG_2]</div><div style="color:#888">...</div><div style="background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);border-radius:4px;padding:4px 8px;color:#00d2ff">[IMG_196]</div><div style="background:rgba(224,64,251,.15);border:1px solid rgba(224,64,251,.4);border-radius:4px;padding:4px 8px;color:#e040fb">[描述]</div><div style="background:rgba(224,64,251,.15);border:1px solid rgba(224,64,251,.4);border-radius:4px;padding:4px 8px;color:#e040fb">[这张]</div><div style="background:rgba(224,64,251,.15);border:1px solid rgba(224,64,251,.4);border-radius:4px;padding:4px 8px;color:#e040fb">[图片]</div></div><div style="margin-top:10px;font-size:.72rem;color:#888">↑ 图像 token 和文本 token 拼接后一起送入 LLM</div></div><div style="margin-top:8px;font-size:.78rem;color:#888">LLaVA: ViT → MLP 投影 → 拼接文本 → LLM 生成回答</div></div>'},
+{n:5,title:"图像理解能力",desc:"Vision-Language Model 能做什么？OCR（识别文字）、图表分析（读懂数据）、场景描述（描述图片内容）、视觉推理（回答关于图片的问题）、空间理解等。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;max-width:550px;margin:0 auto">';const caps=[{k:"📄 OCR",v:"识别文字",c:"#e040fb"},{k:"📊 图表分析",v:"读懂数据",c:"#00d2ff"},{k:"🏞️ 场景描述",v:"描述内容",c:"#00ff88"},{k:"🧠 视觉推理",v:"回答问题",c:"#ffa500"},{k:"📐 空间理解",v:"位置关系",c:"#64c8ff"},{k:"🔍 细节识别",v:"微小目标",c:"#ff6b6b"}];caps.forEach((c,i)=>{h+=`<div style="background:${c.c}12;border:1px solid ${c.c}35;border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.08}s"><div style="font-size:.82rem;color:${c.c};font-weight:600">${c.k}</div><div style="font-size:.68rem;color:#888;margin-top:3px">${c.v}</div></div>`});h+='</div></div>';return h}},
+{n:6,title:"图像生成：Diffusion 原理",desc:"Diffusion 模型的核心：正向过程逐步给图像加噪声直到变成纯噪声；反向过程学习逐步去噪，从纯噪声中恢复出图像。模型学的是「每一步该去掉什么噪声」。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="font-size:.78rem;color:#888;margin-bottom:4px">正向过程（训练时）</div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#00ff88">清晰图片</div><span style="color:#888">→</span><div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#ffa500">加一点噪声</div><span style="color:#888">→</span><div style="background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#ffa500">更多噪声</div><span style="color:#888">→</span><div style="background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#ff6b6b">纯噪声</div></div><div style="font-size:.78rem;color:#888;margin-top:8px">反向过程（生成时）</div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#ff6b6b">纯噪声</div><span style="color:#888">→</span><div style="background:rgba(224,64,251,.1);border:1px solid rgba(224,64,251,.3);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#e040fb">去噪一步</div><span style="color:#888">→</span><div style="background:rgba(224,64,251,.15);border:1px solid rgba(224,64,251,.4);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#e040fb">继续去噪</div><span style="color:#888">→</span><div style="background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);border-radius:6px;padding:6px 10px;font-size:.75rem;color:#00ff88">清晰图片!</div></div></div><div class="note">通常需要 20-50 步去噪。每步只做微小修正，累积起来就能"雕刻"出图像</div></div>'},
+{n:7,title:"文生图流程",desc:"完整的文生图 pipeline：文本经过 Text Encoder 编码为语义向量 → 引导 U-Net/DiT 在 latent space 做去噪 → VAE Decoder 将 latent 解码为像素图像。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(224,64,251,.12);border:1px solid rgba(224,64,251,.4);border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0"><div style="font-size:.7rem;color:#888">Prompt</div><div style="font-size:.8rem;color:#e040fb">"赛博朋克城市"</div></div><span style="color:rgba(255,255,255,.3)">→</span><div style="background:rgba(0,210,255,.12);border:1px solid rgba(0,210,255,.4);border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.1s"><div style="font-size:.7rem;color:#888">Text Encoder</div><div style="font-size:.8rem;color:#00d2ff">CLIP/T5</div></div><span style="color:rgba(255,255,255,.3)">→</span><div style="background:rgba(0,255,136,.12);border:1px solid rgba(0,255,136,.4);border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.2s"><div style="font-size:.7rem;color:#888">去噪网络</div><div style="font-size:.8rem;color:#00ff88">U-Net / DiT</div></div><span style="color:rgba(255,255,255,.3)">→</span><div style="background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.4);border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.3s"><div style="font-size:.7rem;color:#888">解码器</div><div style="font-size:.8rem;color:#ffa500">VAE Decoder</div></div><span style="color:rgba(255,255,255,.3)">→</span><div style="background:rgba(100,200,255,.12);border:1px solid rgba(100,200,255,.4);border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:.4s"><div style="font-size:.7rem;color:#888">输出</div><div style="font-size:.8rem;color:#64c8ff">🖼️ 图像</div></div></div><div style="margin-top:10px;font-size:.78rem;color:#888">Stable Diffusion 在 latent space（64×64）做去噪，而非像素空间（512×512），效率提升 48 倍</div></div>'},
+{n:8,title:"控制生成",desc:"如何精确控制生成结果？ControlNet 用边缘/深度/姿态图引导构图；IP-Adapter 用参考图控制风格/角色；还有 Inpainting（局部重绘）、Outpainting（扩展画布）等。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;max-width:550px;margin:0 auto">';const ctrls=[{k:"🎛️ ControlNet",v:"边缘/深度/姿态引导",c:"#e040fb"},{k:"🎨 IP-Adapter",v:"参考图风格迁移",c:"#00d2ff"},{k:"✏️ Inpainting",v:"局部重绘修改",c:"#00ff88"},{k:"🔲 Outpainting",v:"扩展画布边界",c:"#ffa500"},{k:"🧬 LoRA",v:"风格/角色微调",c:"#64c8ff"},{k:"⚖️ CFG Scale",v:"文本引导强度",c:"#ff6b6b"}];ctrls.forEach((c,i)=>{h+=`<div style="background:${c.c}12;border:1px solid ${c.c}35;border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.08}s"><div style="font-size:.82rem;color:${c.c};font-weight:600">${c.k}</div><div style="font-size:.68rem;color:#888;margin-top:3px">${c.v}</div></div>`});h+='</div></div>';return h}},
+{n:9,title:"视频与音频",desc:"视频理解需要时序建模（帧间关系）；语音识别（Whisper）将音频转文字；TTS 将文字转语音。GPT-4o 实现了实时多模态对话：同时看、听、说。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,210,255,.1);border:1px solid rgba(0,210,255,.3);border-radius:10px;padding:14px;min-width:160px"><div style="color:#00d2ff;font-weight:600;font-size:.85rem;margin-bottom:6px">🎬 视频理解</div><div style="font-size:.75rem;color:#aaa;line-height:1.5">时序 Transformer<br>帧间注意力<br>动作识别/描述<br><span style="color:#666">VideoLLaMA, Video-ChatGPT</span></div></div><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:10px;padding:14px;min-width:160px"><div style="color:#00ff88;font-weight:600;font-size:.85rem;margin-bottom:6px">🎤 语音识别 (ASR)</div><div style="font-size:.75rem;color:#aaa;line-height:1.5">Whisper (OpenAI)<br>音频 → 文本<br>多语言支持<br><span style="color:#666">开源，可本地部署</span></div></div><div style="background:rgba(224,64,251,.1);border:1px solid rgba(224,64,251,.3);border-radius:10px;padding:14px;min-width:160px"><div style="color:#e040fb;font-weight:600;font-size:.85rem;margin-bottom:6px">🔊 语音合成 (TTS)</div><div style="font-size:.75rem;color:#aaa;line-height:1.5">文本 → 语音<br>情感/语调控制<br>声音克隆<br><span style="color:#666">ElevenLabs, XTTS</span></div></div></div></div>'},
+{n:10,title:"多模态 Agent",desc:"终极形态：能看（理解图像/视频）、能听（语音识别）、能说（语音合成）、能画（图像生成）的智能体。结合 Agent 框架，实现真正的全感官 AI 助手。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:10px"><div style="background:rgba(224,64,251,.15);border:2px solid rgba(224,64,251,.4);border-radius:12px;padding:14px 24px"><div style="font-size:1rem;color:#e040fb;font-weight:700">🤖 多模态 Agent</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">';const abilities=[{icon:"👁️",name:"看",desc:"理解图像/屏幕",c:"#00d2ff"},{icon:"👂",name:"听",desc:"语音识别",c:"#00ff88"},{icon:"🗣️",name:"说",desc:"语音合成",c:"#ffa500"},{icon:"🎨",name:"画",desc:"图像生成",c:"#e040fb"},{icon:"🔧",name:"做",desc:"工具调用",c:"#64c8ff"}];abilities.forEach((a,i)=>{h+=`<div style="background:${a.c}12;border:1px solid ${a.c}35;border-radius:8px;padding:8px 12px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="font-size:1.1rem">${a.icon}</div><div style="font-size:.75rem;color:${a.c};font-weight:600">${a.name}</div><div style="font-size:.65rem;color:#888">${a.desc}</div></div>`});h+='</div></div><div class="note">GPT-4o、Gemini 正在实现这个愿景：一个模型，所有模态，实时交互</div></div>';return h}}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  stages.forEach((s,i)=>{
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="common.css">
+<script src="nav.js"></script>
+<script src="progress.js"></script>
+<script src="quiz.js"></script>
+<script src="stepper.js"></script>
+</body>
+</html>

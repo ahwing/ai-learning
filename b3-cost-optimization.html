@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成本优化与选型 — AI/ML 工作负载</title>
+<link rel="stylesheet" href="common.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#1a0f00,#1a1a2e,#2e1a00);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.2rem;margin-bottom:8px;background:linear-gradient(90deg,#ffa500,#ffcc00);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px;font-size:.95rem}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#ffa500,#ffcc00);color:#000}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(255,165,0,.4)}
+.btn-s{background:rgba(255,255,255,.08);color:#ccc;border:1px solid rgba(255,255,255,.15)}
+.btn-s:hover{background:rgba(255,255,255,.15)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.step-bar{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:25px}
+.step-text{color:#aaa;font-size:.9rem}
+.step-text span{color:#ffa500;font-weight:bold}
+.progress-bar-track{flex:1;max-width:300px;height:5px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+#progressBar{height:100%;background:#ffa500;border-radius:4px;transition:width .5s cubic-bezier(.4,0,.2,1);box-shadow:0 0 8px rgba(255,165,0,.4);width:0}
+/* Stage styles */
+.stage{background:rgba(255,255,255,.03);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:24px;animation:fadeUp .4s ease}
+.stage-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.stage-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#ffa500,#ffcc00);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.85rem;color:#000;flex-shrink:0}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.9rem;margin-bottom:14px}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:20px;min-height:80px;overflow:hidden}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+/* Bar chart */
+.bar-chart{display:flex;align-items:flex-end;gap:12px;height:220px;padding:10px 0}
+.bar-group{display:flex;flex-direction:column;align-items:center;flex:1}
+.bar-wrapper{width:100%;height:180px;display:flex;align-items:flex-end;justify-content:center}
+.bar{width:36px;border-radius:4px 4px 0 0;transition:height 1s cubic-bezier(.4,0,.2,1);position:relative}
+.bar-value{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;font-weight:600;white-space:nowrap}
+.bar-label{margin-top:8px;font-size:.72rem;color:#aaa;text-align:center;max-width:70px;word-break:break-all}
+/* Calculator */
+.calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:700px){.calc-grid{grid-template-columns:1fr}}
+.calc-input{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:16px}
+.calc-input label{display:block;color:#aaa;font-size:.8rem;margin-bottom:6px}
+.calc-input input,.calc-input select{width:100%;padding:8px 12px;background:rgba(0,0,0,.4);border:1px solid rgba(255,165,0,.3);border-radius:6px;color:#fff;font-size:.85rem;outline:none}
+.calc-input input:focus,.calc-input select:focus{border-color:#ffa500}
+.calc-result{background:rgba(255,165,0,.05);border:1px solid rgba(255,165,0,.3);border-radius:10px;padding:16px}
+.calc-result h4{color:#ffa500;margin-bottom:10px;font-size:.9rem}
+.result-item{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.82rem}
+.result-item:last-child{border-bottom:none}
+.result-label{color:#aaa}
+.result-value{color:#fff;font-weight:600}
+.result-value.best{color:#00ff88}
+/* Note box */
+.note-box{background:rgba(255,165,0,.05);border-left:3px solid rgba(255,165,0,.5);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.82rem;color:#ccc;line-height:1.6}
+/* Tags */
+.tag{display:inline-block;padding:3px 8px;border-radius:4px;font-size:.72rem;font-weight:600;margin:2px}
+.tag-green{background:rgba(0,255,136,.12);color:#00ff88}
+.tag-orange{background:rgba(255,165,0,.12);color:#ffa500}
+.tag-red{background:rgba(255,80,80,.12);color:#ff5050}
+.tag-blue{background:rgba(100,200,255,.12);color:#64c8ff}
+/* Table */
+.opt-table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:10px}
+.opt-table th{padding:8px;text-align:center;color:#ffa500;border-bottom:1px solid rgba(255,255,255,.1);font-size:.75rem}
+.opt-table th:first-child{text-align:left}
+.opt-table td{padding:8px;text-align:center;border-bottom:1px solid rgba(255,255,255,.05);color:#bbb}
+.opt-table td:first-child{text-align:left;color:#fff;font-weight:600}
+.opt-table tr:hover td{background:rgba(255,165,0,.03)}
+/* Feynman */
+.feynman-local{margin-top:16px;padding:14px 18px;background:rgba(255,213,79,.06);border:1px solid rgba(255,213,79,.25);border-left:3px solid #ffd54f;border-radius:8px;font-size:.82rem;line-height:1.7;color:#e8d5a3}
+/* Checklist */
+.checklist{list-style:none;padding:0}
+.checklist li{padding:6px 0;font-size:.85rem;color:#ccc;position:relative;padding-left:24px}
+.checklist li::before{content:'✓';position:absolute;left:0;color:#00ff88;font-weight:bold}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>💰 成本优化与选型</h1>
+  <p class="subtitle">AI/ML Workload 成本构成、实例选型、架构决策与监控策略</p>
+
+  <div class="controls">
+    <button class="btn btn-p" id="btnNext" onclick="next()">下一步 →</button>
+    <button class="btn btn-s" id="btnPrev" onclick="prev()">← 上一步</button>
+    <button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+  </div>
+
+  <div class="step-bar">
+    <div class="progress-bar-track"><div id="progressBar"></div></div>
+    <div class="step-text" id="stepText">1 / 7</div>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script src="nav.js"></script>
+<script src="stepper.js"></script>
+<script src="progress.js"></script>
+<script src="quiz.js"></script>
+<script>
+(function(){
+'use strict';
+
+// ─── Quiz Data ───
+var quizData = [
+  {
+    type: 'choice',
+    question: '对于不确定流量的 LLM 推理服务，以下哪种部署方式最具成本效益？',
+    options: [
+      'A. SageMaker 实时端点（ml.p4d.24xlarge）',
+      'B. Amazon Bedrock 按需调用（On-Demand）',
+      'C. 自建 EC2 集群 + 负载均衡',
+      'D. SageMaker Serverless Inference'
+    ],
+    answer: 1,
+    explanation: 'Bedrock 按需调用按 token 计费，无需预留实例，空闲时零成本。适合流量不确定或波动大的场景。SageMaker 实时端点需要持续运行付费，自建 EC2 管理开销大。'
+  },
+  {
+    type: 'choice',
+    question: '将 FP16 模型量化为 INT8 后，以下描述正确的是？',
+    options: [
+      'A. 模型精度不变，推理速度提升约 4 倍',
+      'B. 模型体积减半，推理速度提升 1.5-2 倍，精度略有损失',
+      'C. 模型体积不变，但内存占用减少',
+      'D. 只适用于训练阶段，推理无法使用量化模型'
+    ],
+    answer: 1,
+    explanation: 'INT8 量化将每个参数从 16bit 压缩到 8bit，体积减半。推理速度因内存带宽减少和 INT8 加速器支持而提升约 1.5-2x。精度损失通常在 1-2% 以内，对大多数应用可接受。'
+  },
+  {
+    type: 'choice',
+    question: '关于 AWS Savings Plans 在 ML 场景的应用，正确的是？',
+    options: [
+      'A. Savings Plans 仅适用于 EC2，不适用于 SageMaker',
+      'B. ML Savings Plans 可覆盖 SageMaker 训练和推理用量',
+      'C. Savings Plans 不支持 GPU 实例类型',
+      'D. 必须提前指定具体实例类型才能购买 Savings Plans'
+    ],
+    answer: 1,
+    explanation: 'SageMaker Savings Plans 提供最高 64% 的折扣，适用于 SageMaker 训练和推理工作负载。Compute Savings Plans 则自动覆盖 EC2、Fargate、Lambda 等多种计算用量，无需指定实例类型。'
+  }
+];
+
+// ─── Stages ───
+var stages = [
+  // Step 1: AI 成本构成
+  {
+    title: '💸 AI 成本构成',
+    desc: 'AI/ML 工作负载的成本主要分为<strong>训练成本</strong>和<strong>推理成本</strong>两大部分。训练是一次性大量 GPU 小时的投入（GPT-4 训练成本估计 $1 亿+），而推理是持续的、按调用量增长的 OpEx。对于大多数企业，<strong>推理成本占总 AI 支出的 80-90%</strong>。',
+    viz: function() {
+      return '<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:stretch">' +
+        '<div style="flex:1;min-width:200px;padding:14px;background:rgba(255,100,100,.05);border:1px solid rgba(255,100,100,.2);border-radius:10px">' +
+          '<div style="color:#ff6b6b;font-weight:700;margin-bottom:8px">🏋️ 训练成本（CapEx 性质）</div>' +
+          '<div style="font-size:.8rem;color:#aaa;line-height:1.7">' +
+            '• GPU/加速器租用（数周~数月）<br>' +
+            '• 大规模数据集存储与传输<br>' +
+            '• 数据标注（人工/自动）<br>' +
+            '• 实验迭代（超参搜索）<br>' +
+            '<span class="tag tag-red">占比 10-20%（持续推理后）</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:200px;padding:14px;background:rgba(0,200,100,.05);border:1px solid rgba(0,200,100,.2);border-radius:10px">' +
+          '<div style="color:#00c864;font-weight:700;margin-bottom:8px">🚀 推理成本（OpEx）</div>' +
+          '<div style="font-size:.8rem;color:#aaa;line-height:1.7">' +
+            '• 按 Token 计费（Input + Output）<br>' +
+            '• GPU 实例常驻或按调用<br>' +
+            '• 自动伸缩的冷启动开销<br>' +
+            '• 网络传输、日志存储<br>' +
+            '<span class="tag tag-green">占比 80-90%（随用量增长）</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:200px;padding:14px;background:rgba(100,200,255,.05);border:1px solid rgba(100,200,255,.2);border-radius:10px">' +
+          '<div style="color:#64c8ff;font-weight:700;margin-bottom:8px">💲 Token 定价模型</div>' +
+          '<div style="font-size:.8rem;color:#aaa;line-height:1.7">' +
+            '• Claude Sonnet: $3/$15 per 1M tokens<br>' +
+            '• GPT-4o: $2.5/$10 per 1M tokens<br>' +
+            '• Llama 3 (Bedrock): $0.6/$0.8<br>' +
+            '• Nova Pro (Bedrock): $0.8/$3.2<br>' +
+            '<span class="tag tag-blue">Input 远比 Output 便宜</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="note-box" style="margin-top:14px">💡 <strong>关键洞察：</strong>Output token 成本是 Input 的 3-6 倍。优化策略：缩短 system prompt（减少 input）、限制 max_tokens（减少 output）、使用缓存避免重复推理。</div>';
+    }
+  },
+  // Step 2: GPU 实例选型（柱状图动画）
+  {
+    title: '⚡ GPU 实例选型',
+    desc: '不同 GPU 实例在性价比、可用性、适用场景上差异巨大。选型时需综合考虑：模型大小、延迟要求、批量吞吐、预算约束。以下展示各实例<strong>推理性价比</strong>（tokens/$·hr）。',
+    viz: function() {
+      var instances = [
+        { name: 'p5.48xl', gpu: 'H100×8', perf: 95, color: '#ff6b6b', price: '$98.3/hr' },
+        { name: 'p4d.24xl', gpu: 'A100×8', perf: 72, color: '#ffa500', price: '$32.8/hr' },
+        { name: 'g5.48xl', gpu: 'A10G×8', perf: 45, color: '#ffcc00', price: '$16.3/hr' },
+        { name: 'g6.48xl', gpu: 'L4×8', perf: 58, color: '#00c864', price: '$13.4/hr' },
+        { name: 'trn1.32xl', gpu: 'Trainium×16', perf: 88, color: '#64c8ff', price: '$21.5/hr' },
+        { name: 'inf2.48xl', gpu: 'Inferentia2×12', perf: 82, color: '#c864ff', price: '$12.9/hr' }
+      ];
+      var html = '<div style="margin-bottom:10px;font-size:.75rem;color:#888">推理性价比指数（越高越好，综合 tokens/s 与单价）</div>';
+      html += '<div class="bar-chart">';
+      for (var i = 0; i < instances.length; i++) {
+        var inst = instances[i];
+        html += '<div class="bar-group">' +
+          '<div class="bar-wrapper">' +
+            '<div class="bar" style="height:0;background:' + inst.color + '" data-target="' + (inst.perf * 1.8) + '">' +
+              '<div class="bar-value" style="color:' + inst.color + '">' + inst.perf + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="bar-label">' + inst.name + '<br><span style="color:#666;font-size:.65rem">' + inst.gpu + '</span><br><span style="color:#888;font-size:.62rem">' + inst.price + '</span></div>' +
+        '</div>';
+      }
+      html += '</div>';
+      html += '<div class="note-box">🏆 <strong>关键结论：</strong>Inf2 推理性价比最高（专用芯片优势）；Trn1 训练+推理综合最佳；G6(L4) 是通用推理的甜蜜点；P5(H100) 适合大模型训练和低延迟要求。</div>';
+      // Animate bars after render
+      setTimeout(function() {
+        var bars = document.querySelectorAll('.bar[data-target]');
+        bars.forEach(function(bar, idx) {
+          setTimeout(function() {
+            bar.style.height = bar.dataset.target + 'px';
+          }, idx * 120);
+        });
+      }, 100);
+      return html;
+    }
+  },
+  // Step 3: Serverless vs 自建（成本计算器）
+  {
+    title: '🧮 Serverless vs 自建',
+    desc: '三种主流部署模式的成本对比：<strong>Bedrock 按需</strong>（零管理）、<strong>SageMaker Endpoint</strong>（托管 GPU）、<strong>自建 ECS/EC2</strong>（完全控制）。成本取决于调用量、并发数和利用率。',
+    viz: function() {
+      return '<div class="calc-grid">' +
+        '<div class="calc-input">' +
+          '<h4 style="color:#ffa500;margin-bottom:12px;font-size:.9rem">📊 参数设置</h4>' +
+          '<label>月调用量（万次）</label>' +
+          '<input type="number" id="calcCalls" value="100" min="1" max="10000" oninput="updateCalc()">' +
+          '<label style="margin-top:10px">平均每次 Input Tokens</label>' +
+          '<input type="number" id="calcInput" value="500" min="50" max="10000" oninput="updateCalc()">' +
+          '<label style="margin-top:10px">平均每次 Output Tokens</label>' +
+          '<input type="number" id="calcOutput" value="200" min="10" max="4000" oninput="updateCalc()">' +
+          '<label style="margin-top:10px">模型选择</label>' +
+          '<select id="calcModel" onchange="updateCalc()">' +
+            '<option value="nova-pro">Nova Pro ($0.8/$3.2 per 1M)</option>' +
+            '<option value="claude-sonnet">Claude Sonnet ($3/$15 per 1M)</option>' +
+            '<option value="llama3-70b">Llama 3 70B ($2.65/$3.5 per 1M)</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="calc-result">' +
+          '<h4>💰 月度成本估算</h4>' +
+          '<div id="calcResults">' +
+            '<div class="result-item"><span class="result-label">Bedrock 按需</span><span class="result-value" id="resBedrock">-</span></div>' +
+            '<div class="result-item"><span class="result-label">SageMaker Endpoint</span><span class="result-value" id="resSagemaker">-</span></div>' +
+            '<div class="result-item"><span class="result-label">自建 EC2 (g5.2xl)</span><span class="result-value" id="resEC2">-</span></div>' +
+            '<div class="result-item" style="border-top:1px solid rgba(255,165,0,.3);margin-top:8px;padding-top:8px"><span class="result-label">🏆 推荐方案</span><span class="result-value best" id="resBest">-</span></div>' +
+          '</div>' +
+          '<div class="note-box" style="margin-top:12px;font-size:.75rem">⚠️ 仅估算计算成本，不含存储/网络/人力。SageMaker 和 EC2 假设 24×7 运行。</div>' +
+        '</div>' +
+      '</div>';
+    }
+  },
+  // Step 4: 预留与 Spot
+  {
+    title: '🎫 预留与 Spot 策略',
+    desc: '在确定了部署架构后，通过<strong>购买选项优化</strong>可进一步降低 30-70% 成本。关键是根据工作负载特性选择正确的购买模式组合。',
+    viz: function() {
+      return '<table class="opt-table">' +
+        '<tr><th>购买选项</th><th>折扣</th><th>承诺</th><th>适用场景</th><th>ML 用例</th></tr>' +
+        '<tr><td>On-Demand</td><td>0%</td><td>无</td><td>临时实验/Burst</td><td>模型原型验证</td></tr>' +
+        '<tr><td>Savings Plans<br><span style="color:#888;font-size:.7rem">(Compute)</span></td><td>最高 66%</td><td>1-3 年 $/hr</td><td>稳定基线负载</td><td>推理端点基线</td></tr>' +
+        '<tr><td>Reserved Instances</td><td>最高 72%</td><td>1-3 年实例</td><td>固定实例类型</td><td>长期训练集群</td></tr>' +
+        '<tr><td>Spot Instances</td><td>最高 90%</td><td>可随时中断</td><td>容错工作负载</td><td>分布式训练/批推理</td></tr>' +
+        '<tr><td>Bedrock 预配置<br><span style="color:#888;font-size:.7rem">(Provisioned)</span></td><td>~40%</td><td>按模型单元时间</td><td>稳定高吞吐推理</td><td>生产推理服务</td></tr>' +
+      '</table>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">' +
+        '<div style="flex:1;min-width:220px;padding:12px;background:rgba(100,200,255,.04);border:1px solid rgba(100,200,255,.2);border-radius:8px">' +
+          '<div style="color:#64c8ff;font-weight:600;font-size:.85rem;margin-bottom:6px">🎯 Spot 在 ML 训练中的最佳实践</div>' +
+          '<ul style="font-size:.78rem;color:#aaa;line-height:1.8;padding-left:16px">' +
+            '<li>使用 Checkpoint 机制（每 N 步保存）</li>' +
+            '<li>配置 Spot 中断通知（2 分钟警告）</li>' +
+            '<li>混合 On-Demand + Spot 的集群</li>' +
+            '<li>SageMaker Managed Spot Training（自动恢复）</li>' +
+          '</ul>' +
+        '</div>' +
+        '<div style="flex:1;min-width:220px;padding:12px;background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:8px">' +
+          '<div style="color:#ffa500;font-weight:600;font-size:.85rem;margin-bottom:6px">💡 最优组合策略</div>' +
+          '<ul style="font-size:.78rem;color:#aaa;line-height:1.8;padding-left:16px">' +
+            '<li><strong>基线负载</strong>：Savings Plans (60%)</li>' +
+            '<li><strong>弹性扩展</strong>：Spot (30%)</li>' +
+            '<li><strong>不可中断</strong>：On-Demand (10%)</li>' +
+            '<li>定期用 Cost Explorer 审计利用率</li>' +
+          '</ul>' +
+        '</div>' +
+      '</div>';
+    }
+  },
+  // Step 5: 推理优化技术
+  {
+    title: '🔧 推理优化技术',
+    desc: '在不改变架构的前提下，通过<strong>模型级优化</strong>可大幅降低推理成本。核心思路：用更少的计算资源达到接近的效果。',
+    viz: function() {
+      return '<div style="display:flex;flex-direction:column;gap:14px">' +
+        '<div style="padding:14px;background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.15);border-radius:10px">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:1.2rem">📐</span><strong style="color:#ffa500">量化 (Quantization)</strong></div>' +
+          '<div style="font-size:.82rem;color:#aaa;line-height:1.7">' +
+            '<strong>FP32 → FP16 → INT8 → FP8 → INT4</strong><br>' +
+            '每降一级：体积减半、速度约 1.5-2x↑、精度损失 &lt;2%<br>' +
+            '工具：GPTQ、AWQ、llama.cpp（GGUF）、TensorRT-LLM<br>' +
+            '<span class="tag tag-green">推荐</span> 生产环境首选 INT8/FP8，开发环境可用 INT4' +
+          '</div>' +
+        '</div>' +
+        '<div style="padding:14px;background:rgba(100,200,255,.04);border:1px solid rgba(100,200,255,.15);border-radius:10px">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:1.2rem">🧬</span><strong style="color:#64c8ff">模型蒸馏 (Distillation)</strong></div>' +
+          '<div style="font-size:.82rem;color:#aaa;line-height:1.7">' +
+            '用大模型（Teacher）的输出训练小模型（Student）<br>' +
+            '例：70B → 8B，保持 90%+ 效果，成本降 8-10x<br>' +
+            'Bedrock Model Distillation：自动化蒸馏工作流<br>' +
+            '<span class="tag tag-blue">适用</span> 特定垂直领域任务、对延迟敏感的场景' +
+          '</div>' +
+        '</div>' +
+        '<div style="padding:14px;background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.15);border-radius:10px">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:1.2rem">⚡</span><strong style="color:#c864ff">Speculative Decoding</strong></div>' +
+          '<div style="font-size:.82rem;color:#aaa;line-height:1.7">' +
+            '小模型快速生成 N 个候选 token → 大模型一次性验证<br>' +
+            '加速 2-3x，输出质量与大模型一致（无损！）<br>' +
+            '原理：验证比生成便宜（并行 vs 自回归）<br>' +
+            '<span class="tag tag-orange">前沿</span> 适合延迟敏感 + 质量不能妥协的场景' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+  },
+  // Step 6: 成本监控
+  {
+    title: '📊 成本监控与治理',
+    desc: '持续的成本可见性是优化的前提。通过<strong>标签策略</strong>、<strong>预算告警</strong>、<strong>异常检测</strong>实现精细化 AI 支出管理。',
+    viz: function() {
+      return '<div style="display:flex;gap:14px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:250px;padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px">' +
+          '<div style="color:#ffa500;font-weight:700;margin-bottom:10px;font-size:.9rem">🏷️ 标签策略（成本分账）</div>' +
+          '<div style="font-size:.8rem;color:#aaa;line-height:1.8">' +
+            '• <code style="color:#ffcc00">project: chatbot-v2</code><br>' +
+            '• <code style="color:#ffcc00">env: prod/staging/dev</code><br>' +
+            '• <code style="color:#ffcc00">team: ai-platform</code><br>' +
+            '• <code style="color:#ffcc00">cost-center: dept-123</code><br>' +
+            '• 使用 AWS Tag Policy 强制执行<br>' +
+            '• Cost Allocation Tags 启用后次月生效' +
+          '</div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:250px;padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px">' +
+          '<div style="color:#64c8ff;font-weight:700;margin-bottom:10px;font-size:.9rem">🚨 告警与自动化</div>' +
+          '<div style="font-size:.8rem;color:#aaa;line-height:1.8">' +
+            '• <strong>AWS Budgets</strong>：月预算阈值告警<br>' +
+            '• <strong>Cost Anomaly Detection</strong>：ML 驱动异常检测<br>' +
+            '• <strong>CloudWatch Alarms</strong>：GPU 利用率 &lt;30% 告警<br>' +
+            '• <strong>Lambda 自动化</strong>：低利用率时自动缩容<br>' +
+            '• <strong>Trusted Advisor</strong>：闲置资源识别' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:14px;padding:14px;background:rgba(0,255,136,.03);border:1px solid rgba(0,255,136,.15);border-radius:10px">' +
+        '<div style="color:#00ff88;font-weight:700;margin-bottom:8px;font-size:.85rem">📈 Cost Explorer 最佳实践</div>' +
+        '<div style="font-size:.8rem;color:#aaa;line-height:1.7">' +
+          '1. 按 Service + Tag 分组查看 → 定位最大支出项<br>' +
+          '2. 使用「每日粒度」发现异常尖峰<br>' +
+          '3. 对比「摊销成本」vs「非摊销」看真实 RI/SP 效果<br>' +
+          '4. 设置月度 Cost Report 自动发送给 FinOps 团队<br>' +
+          '5. Bedrock Model Invocation Logging → 追踪每个模型的 token 消耗' +
+        '</div>' +
+      '</div>';
+    }
+  },
+  // Step 7: 费曼总结
+  {
+    title: '✅ 费曼总结 — 成本优化决策清单',
+    desc: '用最简单的语言总结：<strong>AI 成本优化的核心是在「效果」和「成本」之间找到最佳平衡点。</strong>不是越便宜越好，而是每一分钱都花在刀刃上。',
+    viz: function() {
+      return '<div class="feynman-local">' +
+        '<strong>🎯 一句话总结：</strong>选对模型 → 选对部署方式 → 选对购买选项 → 持续监控优化。这四步覆盖 90% 的成本优化空间。' +
+      '</div>' +
+      '<div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+        '<div style="padding:14px;background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:10px">' +
+          '<div style="color:#ffa500;font-weight:600;font-size:.85rem;margin-bottom:8px">🔑 决策清单</div>' +
+          '<ul class="checklist">' +
+            '<li>先试小模型，不行再上大模型</li>' +
+            '<li>先 Bedrock 按需，量大再自建</li>' +
+            '<li>推理服务必须开启量化 (INT8+)</li>' +
+            '<li>训练用 Spot + Checkpoint</li>' +
+            '<li>稳定负载买 Savings Plans</li>' +
+            '<li>所有资源打 Cost Allocation Tags</li>' +
+            '<li>设置 Budget Alert（≥80% 告警）</li>' +
+            '<li>每月 Review GPU 利用率</li>' +
+          '</ul>' +
+        '</div>' +
+        '<div style="padding:14px;background:rgba(255,80,80,.04);border:1px solid rgba(255,80,80,.2);border-radius:10px">' +
+          '<div style="color:#ff5050;font-weight:600;font-size:.85rem;margin-bottom:8px">❌ 常见踩坑</div>' +
+          '<ul style="list-style:none;padding:0;font-size:.82rem;color:#ccc;line-height:1.8">' +
+            '<li>💸 开发用 p4d 跑 7B 模型（杀鸡用牛刀）</li>' +
+            '<li>💸 推理端点 24×7 但白天才有流量</li>' +
+            '<li>💸 未开量化，FP16 跑推理白白浪费内存</li>' +
+            '<li>💸 没有标签，月底不知道钱花在哪里</li>' +
+            '<li>💸 一次买 3 年 RI，技术迭代后用不上</li>' +
+            '<li>💸 忽略数据传输费（跨区传模型权重）</li>' +
+          '</ul>' +
+        '</div>' +
+      '</div>';
+    }
+  }
+];
+
+// ─── Init ───
+initStepper(stages, {
+  pageId: 'b3-cost-optimization',
+  enableQuiz: true,
+  quizData: quizData
+});
+
+// ─── Calculator Logic ───
+window.updateCalc = function() {
+  var calls = parseInt(document.getElementById('calcCalls').value) || 100;
+  var inputTokens = parseInt(document.getElementById('calcInput').value) || 500;
+  var outputTokens = parseInt(document.getElementById('calcOutput').value) || 200;
+  var model = document.getElementById('calcModel').value;
+
+  // Pricing per 1M tokens [input, output]
+  var pricing = {
+    'nova-pro': [0.8, 3.2],
+    'claude-sonnet': [3, 15],
+    'llama3-70b': [2.65, 3.5]
+  };
+  var p = pricing[model];
+
+  // Bedrock on-demand
+  var totalInputTokens = calls * 10000 * inputTokens; // calls 万次
+  var totalOutputTokens = calls * 10000 * outputTokens;
+  var bedrockCost = (totalInputTokens / 1000000) * p[0] + (totalOutputTokens / 1000000) * p[1];
+
+  // SageMaker endpoint (ml.g5.2xlarge ~$1.52/hr, ~60 req/s for 7B)
+  // Assume need enough instances to handle peak
+  var reqPerSec = (calls * 10000) / (30 * 24 * 3600); // avg req/s
+  var instancesNeeded = Math.max(1, Math.ceil(reqPerSec / 15)); // 15 req/s per g5.2xl
+  var sagemakerCost = instancesNeeded * 1.52 * 24 * 30;
+
+  // Self-managed EC2 (g5.2xlarge $1.21/hr On-Demand)
+  var ec2Cost = instancesNeeded * 1.21 * 24 * 30;
+
+  // Format
+  function fmt(n) { return '$' + n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  document.getElementById('resBedrock').textContent = fmt(bedrockCost);
+  document.getElementById('resSagemaker').textContent = fmt(sagemakerCost);
+  document.getElementById('resEC2').textContent = fmt(ec2Cost) + ' + 运维';
+
+  // Recommendation
+  var costs = [
+    { name: 'Bedrock 按需', cost: bedrockCost },
+    { name: 'SageMaker', cost: sagemakerCost },
+    { name: 'EC2 自建', cost: ec2Cost }
+  ];
+  costs.sort(function(a, b) { return a.cost - b.cost; });
+
+  var best = costs[0].name;
+  if (bedrockCost < sagemakerCost * 0.8) {
+    best = 'Bedrock 按需（低量优势）';
+  } else if (calls > 500) {
+    best = '自建/SageMaker（高量优势）';
+  }
+  document.getElementById('resBest').textContent = best;
+
+  // Highlight cheapest
+  var els = ['resBedrock', 'resSagemaker', 'resEC2'];
+  var vals = [bedrockCost, sagemakerCost, ec2Cost];
+  var minVal = Math.min.apply(null, vals);
+  for (var i = 0; i < els.length; i++) {
+    document.getElementById(els[i]).className = vals[i] === minVal ? 'result-value best' : 'result-value';
+  }
+};
+
+// Auto-trigger calc when step 3 becomes active
+var origRender = null;
+var _origNext = window.next;
+var _origPrev = window.prev;
+
+// Use MutationObserver to trigger calc when calculator appears
+var observer = new MutationObserver(function() {
+  if (document.getElementById('calcCalls')) {
+    updateCalc();
+  }
+});
+observer.observe(document.getElementById('content'), { childList: true, subtree: true });
+
+})();
+</script>
+</body>
+</html>
