@@ -691,5 +691,13 @@ render();
 <script src="progress.js"></script>
 <script src="quiz.js"></script>
 <script src="stepper.js"></script>
+<script>
+if (window.renderSATip) {
+  renderSATip('inference.html', [
+    { step: 1, tip: 'SA关注：推理成本占 AI 项目 80%+ 运营支出——选择 Inf2 vs GPU 直接影响客户 TCO' },
+    { step: 6, tip: 'SA关注：量化（INT8/INT4）是生产部署标配——帮客户做 70B 模型单卡部署的关键方案' }
+  ]);
+}
+</script>
 </body>
 </html>

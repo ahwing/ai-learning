@@ -55,12 +55,26 @@ h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradie
 .prob-fill{height:100%;border-radius:9px;transition:width 1s cubic-bezier(.4,0,.2,1);width:0}
 .prob-val{width:45px;font-size:.75rem;color:#888}
 .note{background:rgba(0,210,255,.05);border-left:3px solid rgba(0,210,255,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+.phase-divider{display:flex;align-items:center;gap:12px;margin:28px 0 16px;animation:fadeUp .5s ease forwards}
+.phase-divider .line{flex:1;height:1px}
+.phase-divider .pname{font-size:1.05rem;font-weight:800;letter-spacing:.5px;padding:6px 18px;border-radius:20px;white-space:nowrap}
+.phase-prefill .pname{background:linear-gradient(135deg,rgba(0,210,255,.18),rgba(58,123,213,.18));color:#00d2ff;border:1px solid rgba(0,210,255,.45)}
+.phase-prefill .line{background:linear-gradient(90deg,transparent,rgba(0,210,255,.5),transparent)}
+.phase-decode .pname{background:linear-gradient(135deg,rgba(200,100,255,.18),rgba(255,100,200,.18));color:#c864ff;border:1px solid rgba(200,100,255,.45)}
+.phase-decode .line{background:linear-gradient(90deg,transparent,rgba(200,100,255,.5),transparent)}
+.phase-sub{font-size:.78rem;color:#888;margin-left:6px}
+.stage-num.pf{background:linear-gradient(135deg,#00d2ff,#3a7bd5)}
+.stage-num.dc{background:linear-gradient(135deg,#c864ff,#ff64c8)}
+.ptag{display:inline-block;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:8px;vertical-align:middle}
+.ptag.pf{background:rgba(0,210,255,.15);color:#00d2ff;border:1px solid rgba(0,210,255,.4)}
+.ptag.dc{background:rgba(200,100,255,.15);color:#c864ff;border:1px solid rgba(200,100,255,.4)}
+.tok-cache{background:rgba(255,200,0,.13);border:1px dashed rgba(255,200,0,.5);color:#ffc800}
 </style>
 </head>
 <body>
 <div class="container">
-<h1>Transformer 完整链路</h1>
-<p class="subtitle">从输入文本到输出预测 — 逐步交互式可视化</p>
+<h1>Transformer 推理两阶段</h1>
+<p class="subtitle">Prefill 预填充 → Decode 解码 — 逐步交互式可视化</p>
 <div class="controls">
 <button class="btn btn-p" onclick="next()">下一步 →</button>
 <button class="btn btn-s" onclick="prev()">← 上一步</button>
@@ -265,26 +279,29 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 <script>
 const stages=[
-{n:1,title:"输入文本 (Input Text)",desc:"原始自然语言文本作为模型输入。Transformer 接收一段文本序列。",
+// ===== Prefill 阶段 =====
+{n:1,phase:"prefill",title:"输入 Prompt (Input Text)",desc:"用户输入的整段提示词作为 Prefill 阶段的输入。这一阶段会一次性、并行地处理 prompt 里的所有 token。",
  viz:()=>{const toks=["The","cat","sat","on","the","mat"];return toks.map((t,i)=>`<span class="tok tok-in" style="animation-delay:${i*.1}s">${t}</span>`).join('')}},
-{n:2,title:"分词 (Tokenization)",desc:"文本被分词器（如 BPE/WordPiece）切分为子词 token，每个 token 映射到词表中的唯一 ID。",
+{n:2,phase:"prefill",title:"分词 (Tokenization)",desc:"文本被分词器（如 BPE/WordPiece）切分为子词 token，每个 token 映射到词表中的唯一 ID。整个 prompt 一起送入模型。",
  viz:()=>{const pairs=[["The","1024"],["cat","4521"],["sat","8832"],["on","102"],["the","1024"],["mat","9917"]];return pairs.map(([w,id],i)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><span class="tok tok-in">${w}</span><span style="color:rgba(255,255,255,.3)">↓</span><span class="tok tok-id">${id}</span></div>`).join('')}},
-{n:3,title:"词嵌入 (Token Embedding)",desc:"每个 token ID 查表得到一个高维向量（如 768/4096 维）。这个向量编码了 token 的语义信息。",
- viz:()=>{const toks=["The","cat","sat","on"];return toks.map((t,i)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s"><span class="tok tok-in" style="font-size:.75rem">${t}</span><span style="color:rgba(255,255,255,.3)">↓</span><span class="tok tok-em">[${(Math.random()*2-1).toFixed(2)}, ${(Math.random()*2-1).toFixed(2)}, ... 768d]</span></div>`).join('')}},
-{n:4,title:"位置编码 (Positional Encoding)",desc:"Transformer 本身没有顺序感知。位置编码为每个位置注入独特信号，让模型知道 token 的先后顺序。常用：正弦编码(原始)、RoPE(LLaMA)、ALiBi。",
+{n:3,phase:"prefill",title:"词嵌入 + 位置编码",desc:"每个 token ID 查表得到高维向量（如 4096 维），再叠加位置编码（正弦 / RoPE / ALiBi）注入顺序信息。所有位置同时完成，因此 Prefill 是计算密集型（compute-bound）。",
  viz:()=>{const toks=["The","cat","sat","on"];return toks.map((t,i)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s"><span class="tok tok-em" style="font-size:.75rem">emb(${t})</span><span style="color:rgba(255,255,255,.3)">+</span><span class="tok tok-pos">pos_${i}</span><span style="color:rgba(255,255,255,.3)">↓</span><span class="tok tok-out" style="font-size:.72rem">x_${i}</span></div>`).join('')}},
-{n:5,title:"多头注意力 (Multi-Head Attention)",desc:"核心机制！每个 token 通过 Q/K/V 线性投影，计算与其他 token 的相关性分数，加权聚合信息。多个头并行关注不同类型的关系（语法、语义、距离等）。公式：Attention(Q,K,V) = softmax(QK^T/√d)V",
- viz:()=>{const n=5;let h='<div class="attn-wrap">';for(let head=0;head<3;head++){h+=`<div class="attn-head"><div class="attn-lbl">Head ${head+1}</div><div class="attn-map" style="grid-template-columns:repeat(${n},1fr)">`;for(let i=0;i<n*n;i++){const v=(Math.random()*.8+.1).toFixed(2);const colors=['0,210,255','200,100,255','0,255,136'];h+=`<div class="a-cell" style="background:rgba(${colors[head]},${v})"></div>`}h+='</div></div>'}h+='</div>';return h}},
-{n:6,title:"残差连接 + 层归一化",desc:"Attention 输出与输入相加（残差连接），再做 LayerNorm。残差让深层网络可训练（梯度直通），LN 稳定数值范围。公式：output = LayerNorm(x + Attention(x))",
- viz:()=>'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center"><div class="tok tok-in">x (输入)</div><span style="color:#888">→</span><div class="tok tok-out">Attn(x)</div><span style="color:#888">→</span><div style="display:flex;align-items:center;gap:5px"><div class="tok tok-em">x + Attn(x)</div></div><span style="color:#888">→</span><div class="tok tok-pos">LayerNorm</div><span style="color:#888">→</span><div class="tok tok-out">输出</div></div><div class="note">💡 Pre-Norm（先归一化再计算）vs Post-Norm（先计算再归一化）：现代模型多用 Pre-Norm，训练更稳定</div>'},
-{n:7,title:"前馈网络 (FFN)",desc:"每个 token 独立通过一个两层 MLP：先扩展维度（×4），经过激活函数（GELU/SwiGLU），再压缩回原维度。这里存储了模型的「知识记忆」。",
- viz:()=>{let h='<div class="ffn-wrap">';h+='<div class="ffn-col"><div class="ffn-dot" style="background:#00d2ff"></div><div class="ffn-dot" style="background:#00d2ff;animation-delay:.2s"></div><div class="ffn-dot" style="background:#00d2ff;animation-delay:.4s"></div><div class="ffn-lbl">d_model<br>4096</div></div>';h+='<div class="ffn-arr">→</div>';h+='<div class="ffn-col">';for(let i=0;i<6;i++)h+=`<div class="ffn-dot" style="background:#ffa500;animation-delay:${i*.1}s"></div>`;h+='<div class="ffn-lbl">d_ff<br>16384 (×4)</div></div>';h+='<div class="ffn-arr">→ GELU →</div>';h+='<div class="ffn-col"><div class="ffn-dot" style="background:#00ff88"></div><div class="ffn-dot" style="background:#00ff88;animation-delay:.2s"></div><div class="ffn-dot" style="background:#00ff88;animation-delay:.4s"></div><div class="ffn-lbl">d_model<br>4096</div></div>';h+='</div>';h+='<div class="note">💡 SwiGLU（LLaMA/PaLM 使用）比 GELU 效果更好，代价是参数略多</div>';return h}},
-{n:8,title:"重复 N 层 (Layer Stacking)",desc:"以上 Attention + FFN 块堆叠 N 层（GPT-3: 96 层, LLaMA-70B: 80 层）。浅层捕捉语法，中层捕捉语义，深层捕捉复杂推理模式。",
- viz:()=>{let h='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%">';for(let i=0;i<6;i++){const opacity=(0.4+i*0.12).toFixed(2);h+=`<div style="display:flex;align-items:center;gap:8px;animation:fadeUp .3s ease forwards;opacity:0;animation-delay:${i*.1}s"><span style="color:#888;font-size:.7rem;width:55px;text-align:right">Layer ${i+1}</span><div style="flex:1;max-width:300px;height:24px;border-radius:6px;background:linear-gradient(90deg,rgba(0,210,255,${opacity}),rgba(200,100,255,${opacity}));display:flex;align-items:center;padding:0 10px"><span style="font-size:.65rem;color:rgba(255,255,255,.8)">Attn → Add&Norm → FFN → Add&Norm</span></div></div>`}h+=`<div style="font-size:.7rem;color:#888;margin-top:8px;text-align:center">... 共 N 层 (LLaMA-70B = 80 层, GPT-4 传闻 120 层) ...</div>`;h+='</div>';return h}},
-{n:9,title:"输出层 (LM Head)",desc:"最后一层的输出向量通过线性变换映射到词表大小（如 32000 维），再经 softmax 得到下一个 token 的概率分布。",
- viz:()=>{const probs=[{w:"is",p:.42,c:"#00ff88"},{w:"was",p:.28,c:"#00d2ff"},{w:"has",p:.12,c:"#ffa500"},{w:"the",p:.08,c:"#c864ff"},{w:"...",p:.10,c:"#888"}];let h='<div class="prob-wrap">';probs.forEach((p,i)=>{h+=`<div class="prob-item" style="animation-delay:${i*.15}s"><span class="prob-lbl">${p.w}</span><div class="prob-bg"><div class="prob-fill" style="width:${p.p*100}%;background:${p.c}"></div></div><span class="prob-val">${(p.p*100).toFixed(1)}%</span></div>`});h+='</div>';setTimeout(()=>{document.querySelectorAll('.prob-fill').forEach(el=>{el.style.width=el.style.width})},100);return h}},
-{n:10,title:"采样输出 (Sampling)",desc:"从概率分布中选择下一个 token。策略包括：Greedy（取最大）、Top-K（从前K个中随机）、Top-P/Nucleus（累计概率截断）、Temperature（控制分布平滑度）。",
- viz:()=>'<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;max-width:600px;margin:0 auto">'+[{k:"Greedy",v:"T=0, 确定性",c:"#00d2ff"},{k:"Top-K=50",v:"前50个候选随机",c:"#ffa500"},{k:"Top-P=0.9",v:"累计概率90%截断",c:"#00ff88"},{k:"Temperature",v:"T↑随机 T↓确定",c:"#c864ff"}].map(s=>`<div style="background:${s.c}15;border:1px solid ${s.c}35;border-radius:8px;padding:10px"><div style="font-size:.8rem;color:${s.c};font-weight:600">${s.k}</div><div style="font-size:.68rem;color:#888;margin-top:3px">${s.v}</div></div>`).join('')+'</div><div class="note">💡 代码生成通常用 T=0 (Greedy)，创意写作用 T=0.7-1.0，Temperature 越高越"有创意"但也越可能胡说</div></div>'}
+{n:4,phase:"prefill",title:"并行多头注意力 (Full-Sequence Attention)",desc:"核心机制！prompt 中每个 token 通过 Q/K/V 投影，与所有位置计算相关性。Prefill 一次性算出整段序列的注意力（满三角矩阵），多个头并行关注不同关系。公式：Attention(Q,K,V) = softmax(QK^T/√d)V",
+ viz:()=>{const n=5;let h='<div class="attn-wrap">';for(let head=0;head<3;head++){h+=`<div class="attn-head"><div class="attn-lbl">Head ${head+1}</div><div class="attn-map" style="grid-template-columns:repeat(${n},1fr)">`;for(let i=0;i<n*n;i++){const r=Math.floor(i/n),c=i%n;const v=c<=r?(Math.random()*.8+.1).toFixed(2):'0';const colors=['0,210,255','200,100,255','0,255,136'];h+=`<div class="a-cell" style="background:rgba(${colors[head]},${v})"></div>`}h+='</div></div>'}h+='</div><div class="note">💡 因果掩码（下三角）：每个 token 只能看到自己及之前的 token，符合自回归生成的设定</div>';return h}},
+{n:5,phase:"prefill",title:"残差 + LayerNorm + FFN × N 层",desc:"Attention 输出经残差连接与 LayerNorm，再进入前馈网络（两层 MLP，扩展 ×4 后用 GELU/SwiGLU 激活）。这套 block 堆叠 N 层（LLaMA-70B = 80 层）。浅层学语法，深层学推理。",
+ viz:()=>{let h='<div class="ffn-wrap">';h+='<div class="ffn-col"><div class="ffn-dot" style="background:#00d2ff"></div><div class="ffn-dot" style="background:#00d2ff;animation-delay:.2s"></div><div class="ffn-dot" style="background:#00d2ff;animation-delay:.4s"></div><div class="ffn-lbl">d_model<br>4096</div></div>';h+='<div class="ffn-arr">→</div>';h+='<div class="ffn-col">';for(let i=0;i<6;i++)h+=`<div class="ffn-dot" style="background:#ffa500;animation-delay:${i*.1}s"></div>`;h+='<div class="ffn-lbl">d_ff<br>16384 (×4)</div></div>';h+='<div class="ffn-arr">→ GELU →</div>';h+='<div class="ffn-col"><div class="ffn-dot" style="background:#00ff88"></div><div class="ffn-dot" style="background:#00ff88;animation-delay:.2s"></div><div class="ffn-dot" style="background:#00ff88;animation-delay:.4s"></div><div class="ffn-lbl">d_model<br>4096</div></div>';h+='</div>';h+='<div class="note">💡 Pre-Norm + 残差让深层网络可训练；FFN 存储模型的「知识记忆」</div>';return h}},
+{n:6,phase:"prefill",title:"写入 KV Cache + 预测首个 token",desc:"Prefill 的收尾：把每层算出的 Key/Value 缓存起来（KV Cache），供后续 Decode 复用，避免重复计算整段 prompt。同时最后一个位置经 LM Head + softmax 得到第一个输出 token。",
+ viz:()=>{let h='<div style="width:100%;text-align:center">';h+='<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px">'+["The","cat","sat","on","the","mat"].map(t=>`<span class="tok tok-cache">KV(${t})</span>`).join('')+'</div>';h+='<div style="font-size:.72rem;color:#888;margin-bottom:14px">↑ 整段 prompt 的 Key/Value 已缓存（每层一份）</div>';const probs=[{w:"down",p:.46,c:"#00ff88"},{w:"there",p:.22,c:"#00d2ff"},{w:"quietly",p:.14,c:"#ffa500"},{w:"...",p:.18,c:"#888"}];h+='<div class="prob-wrap" style="margin:0 auto">';probs.forEach((p,i)=>{h+=`<div class="prob-item" style="animation-delay:${i*.15}s"><span class="prob-lbl">${p.w}</span><div class="prob-bg"><div class="prob-fill" style="width:${p.p*100}%;background:${p.c}"></div></div><span class="prob-val">${(p.p*100).toFixed(1)}%</span></div>`});h+='</div>';h+='<div class="note">⏱️ Prefill 越长（prompt 越大）首 token 延迟（TTFT）越高，但只发生一次</div></div>';setTimeout(()=>{document.querySelectorAll('.prob-fill').forEach(el=>{el.style.width=el.style.width})},100);return h}},
+
+// ===== Decode 阶段 =====
+{n:7,phase:"decode",title:"取上一个 token 作为输入",desc:"Decode 阶段开始自回归循环：把上一步生成的 token（如 “down”）作为新的、唯一的输入。每次只处理 1 个 token，所以 Decode 是访存密集型（memory-bound）。",
+ viz:()=>{let h='<div style="width:100%;text-align:center">';h+='<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;align-items:center">'+["The","cat","sat","on","the","mat"].map(t=>`<span class="tok tok-in" style="opacity:.4">${t}</span>`).join('')+'<span style="color:#888">→</span><span class="tok tok-out" style="font-size:.9rem">down</span></div>';h+='<div class="note">💡 已生成的 token 不必重算，它们的 K/V 已经在缓存里。只有新 token 需要前向计算</div></div>';return h}},
+{n:8,phase:"decode",title:"单 token 注意力（复用 KV Cache）",desc:"新 token 计算自己的 Q，与 KV Cache 里所有历史 Key/Value 做注意力。只新增一行计算，因此每步极快——但需要从显存反复读取庞大的 KV Cache，成为带宽瓶颈。",
+ viz:()=>{const n=7;let h='<div class="attn-wrap"><div class="attn-head"><div class="attn-lbl">新 token 的注意力（最后一行）</div><div class="attn-map" style="grid-template-columns:repeat('+n+',1fr)">';for(let i=0;i<n;i++){const fromCache=i<n-1;const v=(Math.random()*.7+.2).toFixed(2);h+=`<div class="a-cell" style="background:rgba(${fromCache?'255,200,0':'200,100,255'},${v});border:1px solid rgba(${fromCache?'255,200,0':'200,100,255'},.6)"></div>`}h+='</div><div style="font-size:.65rem;color:#888;margin-top:6px"><span style="color:#ffc800">■</span> 来自 KV Cache &nbsp; <span style="color:#c864ff">■</span> 当前新 token</div></div></div>';h+='<div class="note">⚡ FlashAttention / PagedAttention / 投机解码（Speculative Decoding）都在优化这一步的访存效率</div>';return h}},
+{n:9,phase:"decode",title:"预测下一个 token",desc:"新 token 的输出向量经 LM Head 投影到词表大小，softmax 得到概率分布，再按采样策略（Greedy / Top-K / Top-P / Temperature）选出下一个 token。",
+ viz:()=>{const probs=[{w:"there",p:.51,c:"#00ff88"},{w:"and",p:.21,c:"#00d2ff"},{w:"slowly",p:.13,c:"#ffa500"},{w:"...",p:.15,c:"#888"}];let h='<div class="prob-wrap">';probs.forEach((p,i)=>{h+=`<div class="prob-item" style="animation-delay:${i*.15}s"><span class="prob-lbl">${p.w}</span><div class="prob-bg"><div class="prob-fill" style="width:${p.p*100}%;background:${p.c}"></div></div><span class="prob-val">${(p.p*100).toFixed(1)}%</span></div>`});h+='</div><div class="note">💡 代码生成常用 T=0（Greedy 确定性），创意写作用 T=0.7~1.0</div>';setTimeout(()=>{document.querySelectorAll('.prob-fill').forEach(el=>{el.style.width=el.style.width})},100);return h}},
+{n:10,phase:"decode",title:"追加 KV Cache，自回归循环",desc:"把刚生成 token 的 K/V 追加进缓存，然后回到第 7 步，用它作为下一轮输入。如此逐字生成，直到产生 EOS（结束符）或达到长度上限。这就是你看到的「逐字蹦字」效果。",
+ viz:()=>{let h='<div style="width:100%;text-align:center">';h+='<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap;align-items:center;margin-bottom:14px">';["down","there","slowly","…","<EOS>"].forEach((t,i)=>{const isEos=t==="<EOS>";h+=`<span class="tok ${isEos?'tok-id':'tok-out'}" style="animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.25}s">${t}</span>`;if(i<4)h+='<span style="color:#888">→</span>'});h+='</div>';h+='<div style="display:flex;align-items:center;justify-content:center;gap:10px;font-size:.8rem;color:#c864ff"><span>生成 token</span><span>→</span><span class="tok tok-cache">追加 KV</span><span>→</span><span>回到步骤 7 ↻</span></div>';h+='<div class="note">⏱️ 总延迟 ≈ Prefill(一次) + N × 每 token Decode。输出越长，Decode 累计耗时越大</div></div>';return h}}
 ];
 
 let step=0,autoTimer=null;
@@ -292,9 +309,21 @@ const $=id=>document.getElementById(id);
 function render(){
   $('cur').textContent=step;$('tot').textContent=stages.length;
   let html='';
+  let lastPhase='';
+  const phaseMeta={
+    prefill:{cls:'phase-prefill',name:'🟦 Prefill 预填充',sub:'并行处理整段 prompt · 计算密集 · 决定首 token 延迟 (TTFT)'},
+    decode:{cls:'phase-decode',name:'🟪 Decode 解码',sub:'逐 token 自回归生成 · 访存密集 · 复用 KV Cache'}
+  };
   stages.forEach((s,i)=>{
+    if(s.phase!==lastPhase){
+      const m=phaseMeta[s.phase];
+      html+=`<div class="phase-divider ${m.cls}"><div class="line"></div><div class="pname">${m.name}</div><div class="line"></div></div><div style="text-align:center"><span class="phase-sub">${m.sub}</span></div>`;
+      lastPhase=s.phase;
+    }
     const cls=i<step-1?'done':i===step-1?'active':'';
-    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+    const numCls=s.phase==='prefill'?'pf':'dc';
+    const tag=s.phase==='prefill'?'<span class="ptag pf">PREFILL</span>':'<span class="ptag dc">DECODE</span>';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num ${numCls}">${s.n}</div><div class="stage-title">${s.title}${tag}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
   });
   $('pipeline').innerHTML=html;
 }
@@ -314,8 +343,8 @@ render();
 <script>
 if (window.renderSATip) {
   renderSATip('transformer.html', [
-    { step: 1, tip: 'SA关注：Transformer 是 Bedrock 所有模型的基础架构，理解注意力机制有助于解释模型行为和成本' },
-    { step: 5, tip: 'SA关注：MoE 架构影响推理成本和延迟——Mixtral 等模型使用此技术降低推理开销' }
+    { step: 6, tip: 'SA关注：Prefill 决定首 token 延迟 (TTFT)，KV Cache 大小直接影响显存占用——长 prompt 场景要重点评估内存与成本' },
+    { step: 8, tip: 'SA关注：Decode 是访存密集型瓶颈，FlashAttention / PagedAttention / 投机解码可显著降低推理延迟与单 token 成本' }
   ]);
 }
 </script>
