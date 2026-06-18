@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>监督微调 (SFT) 完整流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a2a4a,#1e3a5f);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#00d2ff,#0099cc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#00d2ff,#0099cc);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(0,210,255,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#00d2ff;font-weight:bold}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1)}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(0,210,255,.4);box-shadow:0 0 25px rgba(0,210,255,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(0,255,136,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#00d2ff,#0099cc);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.tok{display:inline-flex;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;font-size:.85rem;animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tok-in{background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);color:#00d2ff}
+.tok-id{background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);color:#ffa500}
+.tok-em{background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);color:#00ff88}
+.tok-out{background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);color:#c864ff}
+.tok-warn{background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);color:#ff6b6b}
+.note{background:rgba(0,210,255,.05);border-left:3px solid rgba(0,210,255,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>监督微调 (SFT)</h1>
+<p class="subtitle">从基座模型到指令遵循 — 让模型学会"听话"</p>
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>InstructGPT (OpenAI, 2022) 用仅约 13K 条人工标注的指令数据，就让 1.3B 参数的模型超越了 175B 的 GPT-3。这证明了「少量高质量数据 > 海量低质量数据」。
+</div>
+
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">10</span></div>
+<div id="pipeline"></div>
+
+<!-- ===== SFT Data Format Section ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">SFT 数据格式详解</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">不同格式的指令数据，决定了模型学到的能力</p>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:30px">
+<!-- Single-turn -->
+<div style="flex:1;min-width:300px;max-width:500px;background:rgba(0,210,255,.05);border:1px solid rgba(0,210,255,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:12px;font-size:1rem">单轮对话格式</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-family:monospace;font-size:.78rem;line-height:1.8;color:#aaa">
+<div><span style="color:#00d2ff">&lt;|system|&gt;</span> You are a helpful assistant.</div>
+<div><span style="color:#ffa500">&lt;|user|&gt;</span> 解释什么是梯度下降</div>
+<div><span style="color:#00ff88">&lt;|assistant|&gt;</span> 梯度下降是一种优化算法...</div>
+</div>
+<div style="font-size:.78rem;color:#888;margin-top:8px">Loss 只计算 assistant 部分（masked loss）</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>ChatGPT、Claude、Gemini 上线前都经过了精心设计的 SFT 阶段。SFT 数据的质量直接决定了模型的"人格"——是否有礼貌、是否会拒绝有害请求、回答风格如何。
+</div>
+
+</div>
+
+<!-- Multi-turn -->
+<div style="flex:1;min-width:300px;max-width:500px;background:rgba(0,255,136,.05);border:1px solid rgba(0,255,136,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:12px;font-size:1rem">多轮对话格式</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-family:monospace;font-size:.78rem;line-height:1.8;color:#aaa">
+<div><span style="color:#ffa500">&lt;|user|&gt;</span> 写一个 Python 排序函数</div>
+<div><span style="color:#00ff88">&lt;|assistant|&gt;</span> def sort_list(arr):...</div>
+<div><span style="color:#ffa500">&lt;|user|&gt;</span> 加上类型注解</div>
+<div><span style="color:#00ff88">&lt;|assistant|&gt;</span> def sort_list(arr: list[int])...</div>
+</div>
+<div style="font-size:.78rem;color:#888;margin-top:8px">多轮上下文让模型学会追问和修改</div>
+</div>
+</div>
+
+<!-- Data Sources -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:30px">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1rem;text-align:center">📊 SFT 数据来源对比</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Alpaca (Stanford) 用 GPT-4 生成了 52K 条指令数据，成本仅 $500。这开创了"用强模型训练弱模型"的 Self-Instruct 范式，让开源社区快速跟进。
+</div>
+
+<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">来源</th>
+<th style="padding:10px;text-align:center;color:#00d2ff">质量</th>
+<th style="padding:10px;text-align:center;color:#ffa500">数量</th>
+<th style="padding:10px;text-align:left;color:#888">代表</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">人工标注</td>
+<td style="padding:10px;text-align:center;color:#00ff88">⭐⭐⭐</td>
+<td style="padding:10px;text-align:center">10K-100K</td>
+<td style="padding:10px;color:#666">InstructGPT, Anthropic HH</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">模型蒸馏</td>
+<td style="padding:10px;text-align:center;color:#ffa500">⭐⭐</td>
+<td style="padding:10px;text-align:center">100K-1M</td>
+<td style="padding:10px;color:#666">Alpaca, Vicuna, WizardLM</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">开源社区</td>
+<td style="padding:10px;text-align:center;color:#ffa500">⭐⭐</td>
+<td style="padding:10px;text-align:center">100K+</td>
+<td style="padding:10px;color:#666">ShareGPT, OASST</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa">合成数据</td>
+<td style="padding:10px;text-align:center;color:#00d2ff">⭐⭐-⭐⭐⭐</td>
+<td style="padding:10px;text-align:center">无限</td>
+<td style="padding:10px;color:#666">Self-Instruct, Evol-Instruct</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Key Insights -->
+<div style="background:rgba(0,210,255,.03);border:1px solid rgba(0,210,255,.2);border-radius:12px;padding:22px;max-width:700px;margin:0 auto">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:12px;font-size:1rem">💡 SFT 关键洞察</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8">
+<div style="margin-bottom:6px"><span style="color:#00d2ff">1.</span> <b style="color:#ddd">质量 >> 数量</b> — LIMA 论文证明 1000 条高质量数据就能产生很好的效果</div>
+<div style="margin-bottom:6px"><span style="color:#00d2ff">2.</span> <b style="color:#ddd">多样性很重要</b> — 覆盖不同任务类型（问答、写作、代码、数学、角色扮演）</div>
+<div style="margin-bottom:6px"><span style="color:#00d2ff">3.</span> <b style="color:#ddd">格式一致性</b> — 统一的 chat template 让模型学会结构化输出</div>
+<div style="margin-bottom:6px"><span style="color:#00d2ff">4.</span> <b style="color:#ddd">Masked Loss</b> — 只在 assistant 回复上计算 loss，不学 user 的提问方式</div>
+<div><span style="color:#00d2ff">5.</span> <b style="color:#ddd">过拟合风险</b> — 数据少 + epoch 多容易过拟合，通常只训 1-3 epochs</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 核心概念深入 Section ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">🧠 核心概念深入</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">用费曼式直觉理解 SFT 的关键机制</p>
+
+<!-- Masked Loss -->
+<div style="background:rgba(0,210,255,.04);border:1px solid rgba(0,210,255,.2);border-radius:14px;padding:22px;margin-bottom:20px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:10px;font-size:1.05rem">🎯 为什么 Masked Loss 有效？</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+<b style="color:#ddd">直觉类比：</b>想象你是老师在批改考试卷。你只给学生的<span style="color:#00ff88">答案</span>打分，而不会给<span style="color:#ffa500">题目本身</span>打分——因为题目是你出的，不需要学生"学会出题"。
+</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-size:.82rem;color:#aaa;line-height:1.7">
+<div style="margin-bottom:4px"><span style="color:#ffa500">📝 题目（user prompt）</span>→ mask=0，不计算 loss，模型不需要学会"怎么提问"</div>
+<div style="margin-bottom:4px"><span style="color:#00ff88">✍️ 答案（assistant response）</span>→ mask=1，计算 loss，模型专注学习"怎么回答"</div>
+<div><span style="color:#c864ff">🎓 效果</span>→ 训练效率更高，模型不会学到"模仿用户说话"的坏习惯</div>
+</div>
+</div>
+
+<!-- LoRA Explained -->
+<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.2);border-radius:14px;padding:22px;margin-bottom:20px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:1.05rem">📎 LoRA 简单解释</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+<b style="color:#ddd">直觉类比：</b>想象你有一本百科全书（预训练模型的权重）。与其重写整本书，不如在关键页面贴上<span style="color:#00ff88">便利贴</span>（低秩矩阵），写上修正和补充。读的时候，原文 + 便利贴 = 更好的内容。
+</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-size:.82rem;color:#aaa;line-height:1.7">
+<div style="margin-bottom:4px"><span style="color:#00d2ff">原始权重 W</span>（冻结，不动）+ <span style="color:#00ff88">ΔW = A × B</span>（只训练这个小矩阵）</div>
+<div style="margin-bottom:4px"><span style="color:#ffa500">关键洞察：</span>微调时权重的变化量 ΔW 是低秩的（信息量不大），所以可以用两个小矩阵 A·B 来近似</div>
+<div><span style="color:#c864ff">实际效果：</span>70B 模型只需训练 ~0.1% 的参数，显存从 140GB 降到 16GB，效果损失极小</div>
+</div>
+</div>
+
+<!-- Catastrophic Forgetting -->
+<div style="background:rgba(255,107,107,.04);border:1px solid rgba(255,107,107,.2);border-radius:14px;padding:22px;margin-bottom:20px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:10px;font-size:1.05rem">💥 灾难性遗忘：为什么会发生？如何预防？</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+<b style="color:#ddd">直觉类比：</b>就像一个钢琴家为了学吉他，练习太猛导致忘了怎么弹钢琴。神经网络的参数是共享的——新任务的梯度更新会覆盖旧知识的编码。
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+<div style="background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.2);border-radius:8px;padding:12px">
+<div style="font-size:.8rem;color:#ff6b6b;font-weight:600;margin-bottom:6px">❌ 导致遗忘的因素</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">• 学习率过高<br>• 训练 epoch 过多<br>• 数据分布太窄<br>• 全参数微调</div>
+</div>
+<div style="background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.2);border-radius:8px;padding:12px">
+<div style="font-size:.8rem;color:#00ff88;font-weight:600;margin-bottom:6px">✅ 预防策略</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">• 使用 LoRA（冻结主干）<br>• 低学习率 (1e-5~2e-5)<br>• 混入预训练数据 (5-10%)<br>• 早停 (early stopping)</div>
+</div>
+</div>
+</div>
+
+<!-- Alignment Tax -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:22px;margin-bottom:20px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:1.05rem">⚖️ SFT 的"对齐税"——可能失去什么？</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+SFT 让模型变得"听话"，但这不是免费的。模型在获得指令遵循能力的同时，可能会牺牲一些原始能力：
+</div>
+<div style="display:flex;gap:12px;flex-wrap:wrap">
+<div style="flex:1;min-width:200px;background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="font-size:.8rem;color:#ffa500;font-weight:600;margin-bottom:6px">可能退化的能力</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">• 开放式创意写作（变得模板化）<br>• 少数语言的流利度<br>• 某些推理任务的灵活性<br>• 长文本续写的连贯性</div>
+</div>
+<div style="flex:1;min-width:200px;background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="font-size:.8rem;color:#00d2ff;font-weight:600;margin-bottom:6px">缓解方法</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">• 数据多样性（覆盖各种任务）<br>• 混入通用语料继续训练<br>• 控制训练步数，不过度拟合<br>• 使用 LoRA 保留原始能力</div>
+</div>
+</div>
+<div style="background:rgba(255,165,0,.05);border-left:3px solid rgba(255,165,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.82rem;color:#aaa">
+💡 这就是为什么 SFT 后还需要 RLHF/DPO——在保持能力的同时进一步对齐
+</div>
+</div>
+</div>
+
+<!-- ===== 替代方案与优化 Section ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">⚡ 替代方案与优化</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">不同微调策略的权衡与数据工程技巧</p>
+
+<!-- Comparison Table -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:24px;overflow-x:auto">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1rem;text-align:center">🔧 微调策略对比：Full FT vs LoRA vs QLoRA vs DoRA</div>
+<table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:600px">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">维度</th>
+<th style="padding:10px;text-align:center;color:#ff6b6b">Full Fine-tuning</th>
+<th style="padding:10px;text-align:center;color:#00ff88">LoRA</th>
+<th style="padding:10px;text-align:center;color:#00d2ff">QLoRA</th>
+<th style="padding:10px;text-align:center;color:#c864ff">DoRA</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">可训练参数</td>
+<td style="padding:10px;text-align:center;color:#ff6b6b">100%</td>
+<td style="padding:10px;text-align:center;color:#00ff88">0.1-1%</td>
+<td style="padding:10px;text-align:center;color:#00d2ff">0.1-1%</td>
+<td style="padding:10px;text-align:center;color:#c864ff">0.1-1%</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">显存需求 (7B)</td>
+<td style="padding:10px;text-align:center;color:#ff6b6b">~60GB</td>
+<td style="padding:10px;text-align:center;color:#00ff88">~16GB</td>
+<td style="padding:10px;text-align:center;color:#00d2ff">~6GB</td>
+<td style="padding:10px;text-align:center;color:#c864ff">~16GB</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">训练速度</td>
+<td style="padding:10px;text-align:center">慢</td>
+<td style="padding:10px;text-align:center">快</td>
+<td style="padding:10px;text-align:center">中等</td>
+<td style="padding:10px;text-align:center">快</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">效果上限</td>
+<td style="padding:10px;text-align:center;color:#ff6b6b">⭐⭐⭐</td>
+<td style="padding:10px;text-align:center;color:#00ff88">⭐⭐⭐</td>
+<td style="padding:10px;text-align:center;color:#00d2ff">⭐⭐</td>
+<td style="padding:10px;text-align:center;color:#c864ff">⭐⭐⭐</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa">核心思路</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">更新所有权重</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">低秩分解 ΔW=AB</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">4-bit量化+LoRA</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">方向+幅度分解</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa">适用场景</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">资源充足，追求极致</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">主流选择，性价比高</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">单卡训练大模型</td>
+<td style="padding:10px;text-align:center;font-size:.75rem">需要更好方向学习</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Alternative Data Strategies -->
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.2);border-radius:14px;padding:22px;margin-bottom:24px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:14px;font-size:1.05rem">🧬 数据生成策略</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-size:.85rem;color:#00d2ff;font-weight:600;margin-bottom:6px">Self-Instruct</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">让模型自己生成指令和回答，再过滤低质量样本。成本低但质量参差不齐。代表：Alpaca</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-size:.85rem;color:#00ff88;font-weight:600;margin-bottom:6px">Evol-Instruct</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">渐进式增加指令复杂度（加约束、深化、拓宽），生成更有挑战性的训练数据。代表：WizardLM</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-size:.85rem;color:#ffa500;font-weight:600;margin-bottom:6px">RLHF-as-SFT</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">用 RLHF 模型的输出作为 SFT 数据（蒸馏对齐行为）。跳过 RL 训练的不稳定性。代表：Zephyr</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-size:.85rem;color:#ff6b6b;font-weight:600;margin-bottom:6px">Rejection Sampling</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">对同一指令生成多个回答，用奖励模型选最好的作为训练数据。质量高但计算成本大。</div>
+</div>
+</div>
+</div>
+
+<!-- Multi-task vs Single-task -->
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px">
+<div style="flex:1;min-width:280px;background:rgba(0,210,255,.04);border:1px solid rgba(0,210,255,.2);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:10px;font-size:1rem">🎯 单任务 SFT</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.7">
+<div style="margin-bottom:4px">• 只针对一个特定任务（如代码生成、医疗问答）</div>
+<div style="margin-bottom:4px">• 数据量需求少（1K-10K 即可）</div>
+<div style="margin-bottom:4px">• 该任务效果极好，但通用性差</div>
+<div>• 适合：垂直领域应用、特定业务场景</div>
+</div>
+</div>
+<div style="flex:1;min-width:280px;background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.2);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:1rem">🌐 多任务 SFT</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.7">
+<div style="margin-bottom:4px">• 混合多种任务类型（问答+代码+写作+数学）</div>
+<div style="margin-bottom:4px">• 数据量需求大（50K-500K）</div>
+<div style="margin-bottom:4px">• 通用能力强，各任务互相促进</div>
+<div>• 适合：通用助手、ChatGPT 类产品</div>
+</div>
+</div>
+</div>
+
+<!-- Instruction Tuning Tricks -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:14px;font-size:1.05rem">🛠️ 指令微调实用技巧</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="font-size:.82rem;color:#00d2ff;font-weight:600;margin-bottom:4px">数据去重</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">语义级去重（不只是字面重复），避免模型对某些模式过拟合。使用 embedding 相似度过滤。</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="font-size:.82rem;color:#00ff88;font-weight:600;margin-bottom:4px">回复长度控制</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">训练数据中回复长度要多样化。全是长回复→模型啰嗦；全是短回复→模型过于简略。</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="font-size:.82rem;color:#ffa500;font-weight:600;margin-bottom:4px">Rejection Sampling</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">生成 N 个候选回复，用奖励模型/规则筛选最佳。相当于"只用最好的答案训练"。</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px">
+<div style="font-size:.82rem;color:#c864ff;font-weight:600;margin-bottom:4px">数据配比调优</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">不同任务类型按比例混合。代码/数学数据占比过高会影响对话能力，需要反复实验找到平衡点。</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 常见问题 FAQ Section ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">❓ 常见问题</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">SFT 实践中最常遇到的疑问</p>
+
+<!-- FAQ 1 -->
+<div style="background:rgba(0,210,255,.04);border:1px solid rgba(0,210,255,.15);border-radius:12px;padding:18px;margin-bottom:14px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:8px;font-size:.95rem">Q1: SFT 需要多少数据才够？</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.7">
+<b style="color:#ddd">简短回答：</b>取决于目标。通用助手需要 50K-500K 条多样化数据；垂直领域 1K-10K 条高质量数据就能见效。<br>
+<b style="color:#ddd">关键原则：</b>LIMA 论文表明，1000 条精心策划的数据就能让模型学会对话格式。但要覆盖更多能力（代码、数学、多语言），数据量需要相应增加。<span style="color:#00ff88">质量永远比数量重要</span>——100 条垃圾数据不如 10 条精品数据。
+</div>
+</div>
+
+<!-- FAQ 2 -->
+<div style="background:rgba(255,107,107,.04);border:1px solid rgba(255,107,107,.15);border-radius:12px;padding:18px;margin-bottom:14px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:8px;font-size:.95rem">Q2: SFT 会让模型变差吗？</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.7">
+<b style="color:#ddd">会的，主要两种情况：</b><br>
+<span style="color:#ff6b6b">① 过拟合</span> — 数据太少或 epoch 太多，模型开始"背答案"而非学会泛化。表现：训练集上完美，新问题上胡说。<br>
+<span style="color:#ff6b6b">② 灾难性遗忘</span> — 学习率太高或数据分布太窄，模型忘记预训练学到的知识。表现：MMLU 等基准分数下降。<br>
+<b style="color:#ddd">预防：</b>监控验证集 loss、定期跑基准测试、使用 LoRA、控制训练步数。
+</div>
+</div>
+
+<!-- FAQ 3 -->
+<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.15);border-radius:12px;padding:18px;margin-bottom:14px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:8px;font-size:.95rem">Q3: LoRA Rank 怎么选？</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.7">
+<b style="color:#ddd">经验法则：</b><br>
+<span style="color:#00ff88">• rank=8-16</span> — 简单任务（格式学习、风格迁移），参数少，训练快<br>
+<span style="color:#00d2ff">• rank=32-64</span> — 主流选择，适合大多数 SFT 场景，平衡效果和效率<br>
+<span style="color:#ffa500">• rank=128-256</span> — 复杂任务（多语言、代码+对话混合），接近全参数效果<br>
+<b style="color:#ddd">直觉：</b>rank 越高，"便利贴"能记录的信息越多，但训练成本也越高。如果 rank=16 效果已经饱和，加到 64 也不会更好。建议从 32 开始，根据验证集效果调整。
+</div>
+</div>
+
+<!-- FAQ 4 -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.15);border-radius:12px;padding:18px;margin-bottom:14px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:8px;font-size:.95rem">Q4: 什么时候该用全参数微调 vs LoRA？</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.7">
+<b style="color:#ffa500">选全参数微调：</b>① 有充足 GPU 资源（8×A100 以上）；② 需要模型深度改变行为（如从英文模型训成中文模型）；③ 追求最后 1-2% 的效果提升。<br>
+<b style="color:#00ff88">选 LoRA：</b>① 资源有限（单卡或少量卡）；② 任务相对简单（学格式、学风格）；③ 需要快速迭代实验；④ 想保留模型原始能力。<br>
+<b style="color:#ddd">实际情况：</b>90% 的场景 LoRA 就够了。全参数微调主要用于训练基础 chat 模型（如 LLaMA → LLaMA-Chat）这种大规模行为改变。
+</div>
+</div>
+
+<!-- FAQ 5 -->
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.15);border-radius:12px;padding:18px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:8px;font-size:.95rem">Q5: 除了跑 benchmark，怎么评估 SFT 质量？</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.7">
+<b style="color:#ddd">多维度评估策略：</b><br>
+<span style="color:#c864ff">① 人工盲评</span> — 让标注员在不知道哪个是新模型的情况下对比打分，最可靠但成本高<br>
+<span style="color:#00d2ff">② LLM-as-Judge</span> — 用 GPT-4/Claude 对模型输出打分（MT-Bench 方式），成本低、相关性高<br>
+<span style="color:#00ff88">③ 对话质量抽检</span> — 随机抽 100-200 条真实用户问题，人工检查回答质量、安全性、格式<br>
+<span style="color:#ffa500">④ 回归测试</span> — 维护一组"必须答对"的核心测试用例，确保新版本不退化<br>
+<span style="color:#ff6b6b">⑤ 用户反馈</span> — 上线后收集 👍👎 反馈，持续监控满意度变化
+</div>
+</div>
+</div>
+
+<div style="margin-top:30px;padding:20px;background:rgba(255,153,0,.05);border:1px solid rgba(255,153,0,.25);border-radius:14px">
+<div style="font-weight:700;color:#ff9900;margin-bottom:12px;font-size:1rem">☁️ AWS 服务映射</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.8">
+• Amazon Bedrock Custom Model Training — 在 Bedrock 上直接微调 FM<br>• Amazon SageMaker — 完全自定义的微调环境（支持 LoRA, QLoRA, Full fine-tuning）<br>• 数据准备：S3 + SageMaker Data Wrangler
+</div>
+</div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="pre-training.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.4);border-radius:10px;color:#ff6b6b;font-size:.9rem">← 预训练 (Pre-training)</a>
+<a href="rlhf.html" style="text-decoration:none;padding:14px 24px;background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.4);border-radius:10px;color:#00ff88;font-size:.9rem">对齐 (RLHF/DPO) →</a>
+</div>
+</div>
+
+</div>
+<script>
+const stages=[
+{n:1,title:"加载基座模型 (Load Base Model)",desc:"从预训练阶段获得的基座模型开始。此时模型已具备语言能力，但不会遵循指令，只会续写文本。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap"><div style="background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);border-radius:8px;padding:12px 20px"><div style="font-size:.8rem;color:#888">Base Model</div><div style="font-size:1rem;color:#ff6b6b;font-weight:600">LLaMA-3 70B</div></div><div style="color:#888;font-size:1.2rem">→</div><div style="background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);border-radius:8px;padding:12px 20px"><div style="font-size:.8rem;color:#888">目标</div><div style="font-size:1rem;color:#00d2ff;font-weight:600">Chat Model</div></div></div><div class="note">基座模型输入"北京的天气"会续写新闻，而不是回答问题</div></div>'},
+{n:2,title:"准备指令数据 (Instruction Data)",desc:"收集高质量的 (指令, 回答) 对。数据来源包括人工标注、模型蒸馏（用强模型生成）、开源数据集等。质量远比数量重要。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;gap:8px;align-items:center">';
+  const examples=[{q:"解释量子纠缠",a:"量子纠缠是一种量子力学现象...",type:"知识"},{q:"写一首关于春天的诗",a:"春风拂面柳丝长...",type:"创作"},{q:"def fibonacci(n):",a:"def fibonacci(n):\\n  if n <= 1: return n...",type:"代码"}];
+  examples.forEach((e,i)=>{h+=`<div style="display:flex;gap:8px;align-items:center;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.15}s"><span class="tok tok-id" style="opacity:1;font-size:.7rem">${e.type}</span><span class="tok tok-in" style="opacity:1;font-size:.75rem">${e.q}</span><span style="color:#888">→</span><span class="tok tok-em" style="opacity:1;font-size:.75rem">${e.a}</span></div>`});
+  h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">典型规模：10K-1M 条高质量指令对</div></div>';return h}},
+{n:3,title:"数据格式化 (Chat Template)",desc:"将指令数据转换为模型的 chat template 格式，添加特殊 token（如 <|user|>, <|assistant|>）。不同模型有不同的模板格式。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-family:monospace;font-size:.78rem;line-height:2;text-align:left;max-width:500px;margin:0 auto"><span style="color:#c864ff">&lt;|begin_of_text|&gt;</span><br><span style="color:#00d2ff">&lt;|start_header_id|&gt;system&lt;|end_header_id|&gt;</span><br><span style="color:#aaa">You are a helpful assistant.</span><br><span style="color:#ffa500">&lt;|start_header_id|&gt;user&lt;|end_header_id|&gt;</span><br><span style="color:#aaa">解释什么是机器学习</span><br><span style="color:#00ff88">&lt;|start_header_id|&gt;assistant&lt;|end_header_id|&gt;</span><br><span style="color:#aaa">机器学习是人工智能的一个分支...</span><br><span style="color:#c864ff">&lt;|eot_id|&gt;</span></div></div>'},
+{n:4,title:"设置 Masked Loss",desc:"关键技巧：只在 assistant 回复的 token 上计算 loss，忽略 system prompt 和 user 输入部分。这让模型专注学习如何回答，而不是学习如何提问。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center;margin-bottom:10px"><span class="tok tok-warn" style="opacity:1;font-size:.75rem;text-decoration:line-through">system: You are...</span><span class="tok tok-warn" style="opacity:1;font-size:.75rem;text-decoration:line-through">user: 解释...</span><span class="tok tok-em" style="opacity:1;font-size:.75rem">assistant: 机器学习是... ✓</span></div><div style="font-size:.8rem;color:#888">❌ 不计算 loss 的部分（mask=0）&nbsp;&nbsp;✅ 计算 loss 的部分（mask=1）</div><div class="note">这就是为什么叫"监督"微调 — 只监督模型的回答质量</div></div>'},
+{n:5,title:"选择微调策略 (Full vs LoRA)",desc:"全参数微调更新所有权重，效果最好但成本高。LoRA 只训练低秩适配器（rank=16-64），参数量减少 100-1000×，是主流选择。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap">';
+  h+='<div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:10px;padding:14px;min-width:180px"><div style="color:#ffa500;font-weight:600;margin-bottom:6px">Full Fine-tuning</div><div style="font-size:.78rem;color:#aaa;line-height:1.5">更新全部参数<br>70B → 70B 可训练<br>需要大量 GPU 显存<br>效果最优</div></div>';
+  h+='<div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:10px;padding:14px;min-width:180px;position:relative"><div style="position:absolute;top:-8px;right:10px;background:#00ff88;color:#000;font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:6px">推荐</div><div style="color:#00ff88;font-weight:600;margin-bottom:6px">LoRA / QLoRA</div><div style="font-size:.78rem;color:#aaa;line-height:1.5">只训练适配器<br>70B → ~100M 可训练<br>单卡/少量卡即可<br>效果接近 Full FT</div></div>';
+  h+='</div></div>';return h}},
+{n:6,title:"设置超参数 (Hyperparameters)",desc:"SFT 的学习率远低于预训练（避免灾难性遗忘），epoch 数少（1-3），batch size 较小。关键是不要破坏预训练学到的知识。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;max-width:500px;margin:0 auto">';
+  const params=[{k:"Learning Rate",v:"1e-5 ~ 2e-5"},{k:"Epochs",v:"1-3"},{k:"Batch Size",v:"64-128"},{k:"LoRA Rank",v:"16-64"},{k:"LoRA Alpha",v:"32-128"},{k:"Warmup",v:"3-10%"}];
+  params.forEach((p,i)=>{h+=`<div style="background:rgba(0,210,255,.1);border:1px solid rgba(0,210,255,.3);border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="font-size:.65rem;color:#888">${p.k}</div><div style="font-size:.85rem;color:#00d2ff;font-weight:600">${p.v}</div></div>`});
+  h+='</div><div class="note" style="max-width:500px;margin:12px auto 0">学习率太高 → 灾难性遗忘；太低 → 学不会指令格式</div></div>';return h}},
+{n:7,title:"训练循环 (Training Loop)",desc:"与预训练类似的前向-反向-更新循环，但规模小得多。通常几小时到几天即可完成。监控 train loss 和 eval loss 防止过拟合。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:6px">';
+  const steps=["加载 batch (指令对)","前向传播 (masked)","计算 loss (仅 assistant)","反向传播","LoRA 参数更新","下一个 batch..."];
+  steps.forEach((s,i)=>{h+=`<div style="background:rgba(0,210,255,${.1+i*.02});border:1px solid rgba(0,210,255,${.3+i*.05});border-radius:6px;padding:6px 18px;font-size:.8rem;color:#00d2ff;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s">${s}</div>`;if(i<steps.length-1)h+='<div style="color:rgba(255,255,255,.2);font-size:.7rem">↓</div>'});
+  h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">总训练时间：数小时 ~ 数天（vs 预训练的数月）</div></div>';return h}},
+{n:8,title:"评估与验证 (Evaluation)",desc:"使用 held-out 验证集评估模型。检查指令遵循能力、回答质量、格式正确性。常用 MT-Bench、AlpacaEval 等自动评测。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">';
+  const benchmarks=[{name:"MT-Bench",score:"8.2/10",c:"#00d2ff"},{name:"AlpacaEval",score:"92%",c:"#00ff88"},{name:"HumanEval",score:"67%",c:"#ffa500"},{name:"MMLU",score:"78%",c:"#c864ff"}];
+  benchmarks.forEach((b,i)=>{h+=`<div style="background:${b.c}15;border:1px solid ${b.c}60;border-radius:8px;padding:10px 16px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s"><div style="font-size:.75rem;color:#888">${b.name}</div><div style="font-size:1rem;color:${b.c};font-weight:600">${b.score}</div></div>`});
+  h+='</div><div class="note" style="max-width:500px;margin:12px auto 0">自动评测 + 人工抽检，确保模型没有退化</div></div>';return h}},
+{n:9,title:"对比：SFT 前 vs 后",desc:"SFT 后模型从「续写机器」变成「指令助手」。能理解问题意图、给出结构化回答、遵循格式要求。但可能仍有安全问题。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:10px;padding:14px;min-width:200px;max-width:280px"><div style="color:#ff6b6b;font-weight:600;margin-bottom:8px">❌ SFT 前 (Base)</div><div style="font-size:.78rem;color:#aaa;text-align:left;line-height:1.6">输入：北京天气怎么样？<br>输出：北京天气预报显示今天...<br>（续写新闻风格，不是回答）</div></div><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:10px;padding:14px;min-width:200px;max-width:280px"><div style="color:#00ff88;font-weight:600;margin-bottom:8px">✅ SFT 后 (Chat)</div><div style="font-size:.78rem;color:#aaa;text-align:left;line-height:1.6">输入：北京天气怎么样？<br>输出：我无法获取实时天气，建议您查看天气预报应用...</div></div></div></div>'},
+{n:10,title:"合并与导出 (Merge & Export)",desc:"如果使用 LoRA，将适配器权重合并回基础模型。导出最终的 SFT 模型，作为下一阶段（RLHF/DPO）的起点。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap"><div style="background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);border-radius:8px;padding:10px 16px"><div style="font-size:.7rem;color:#888">Base Model</div><div style="font-size:.85rem;color:#ffa500">70B params</div></div><span style="color:#888;font-size:1.2rem">+</span><div style="background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);border-radius:8px;padding:10px 16px"><div style="font-size:.7rem;color:#888">LoRA Adapter</div><div style="font-size:.85rem;color:#00d2ff">~100M params</div></div><span style="color:#888;font-size:1.2rem">=</span><div style="background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);border-radius:8px;padding:10px 16px"><div style="font-size:.7rem;color:#888">SFT Model</div><div style="font-size:.85rem;color:#00ff88">Ready for RLHF</div></div></div><div class="note" style="max-width:500px;margin:12px auto 0">SFT 模型已经能用，但对齐（RLHF/DPO）能进一步提升安全性和有用性</div></div>'}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  stages.forEach((s,i)=>{
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="../../assets/common.css">
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/stepper.js"></script>
+</body>
+</html>

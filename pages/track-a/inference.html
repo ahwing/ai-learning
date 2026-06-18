@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM 推理 (Inference) 完整流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a2a3a,#0f2a3a);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#64c8ff,#00d2ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#64c8ff,#00a0cc);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(100,200,255,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#64c8ff;font-weight:bold}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1)}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(100,200,255,.4);box-shadow:0 0 25px rgba(100,200,255,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(0,255,136,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#64c8ff,#00a0cc);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0;color:#000}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.tok{display:inline-flex;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;font-size:.85rem;animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tok-in{background:rgba(100,200,255,.15);border:1px solid rgba(100,200,255,.4);color:#64c8ff}
+.tok-em{background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);color:#00ff88}
+.tok-out{background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);color:#c864ff}
+.tok-id{background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);color:#ffa500}
+.tok-warn{background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);color:#ff6b6b}
+.note{background:rgba(100,200,255,.05);border-left:3px solid rgba(100,200,255,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>LLM 推理 (Inference)</h1>
+<p class="subtitle">从用户输入到模型输出 — 解码、加速与优化全流程</p>
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">12</span></div>
+<div id="pipeline"></div>
+
+<!-- ===== KV Cache Section ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">KV Cache：推理加速的核心</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">避免重复计算，将 O(n²) 降为 O(n)</p>
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:30px">
+<div style="flex:1;min-width:300px;max-width:480px;background:rgba(255,107,107,.05);border:1px solid rgba(255,107,107,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:12px;font-size:1rem">❌ 无 KV Cache</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>vLLM 的 PagedAttention 技术让推理吞吐量提升了 2-24x，已成为生产环境部署 LLM 的事实标准。HuggingFace TGI 和 NVIDIA TensorRT-LLM 也采用了类似思路。
+</div>
+
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-size:.8rem;color:#aaa;line-height:1.8">
+生成 token 5 时：<br>
+重新计算 token 1,2,3,4 的 K,V<br>
+生成 token 6 时：<br>
+重新计算 token 1,2,3,4,5 的 K,V<br>
+<span style="color:#ff6b6b">→ 大量重复计算，O(n²) 复杂度</span>
+</div>
+</div>
+<div style="flex:1;min-width:300px;max-width:480px;background:rgba(0,255,136,.05);border:2px solid rgba(0,255,136,.3);border-radius:14px;padding:22px;position:relative">
+<div style="position:absolute;top:-10px;right:15px;background:#00ff88;color:#000;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:10px">✓ 标准做法</div>
+<div style="font-weight:700;color:#00ff88;margin-bottom:12px;font-size:1rem">✅ 有 KV Cache</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-size:.8rem;color:#aaa;line-height:1.8">
+生成 token 5 时：<br>
+从 cache 读取 token 1-4 的 K,V ⚡<br>
+只计算 token 5 的 Q,K,V<br>
+<span style="color:#00ff88">→ 每步只算 1 个 token，O(n) 复杂度</span><br>
+<span style="color:#888;font-size:.75rem">代价：显存占用随序列长度线性增长</span>
+</div>
+</div>
+</div>
+</div>
+<!-- ===== Optimization Techniques ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">推理优化技术全景</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">从模型压缩到系统工程，多层次加速推理</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:30px">
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(100,200,255,.2);border-radius:10px;padding:16px">
+<div style="font-weight:600;color:#64c8ff;font-size:.9rem;margin-bottom:8px">🗜️ 量化 (Quantization)</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>GGUF 格式 + llama.cpp 让 LLaMA-70B 能在 MacBook Pro (M2 Max, 96GB) 上以 4-bit 量化流畅运行。性能损失不到 3%，内存占用从 140GB 降至 35GB。
+</div>
+
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">FP16 → INT8 → INT4<br>显存减半/四分之一<br>GPTQ, AWQ, GGUF<br>精度损失极小</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(0,255,136,.2);border-radius:10px;padding:16px">
+<div style="font-weight:600;color:#00ff88;font-size:.9rem;margin-bottom:8px">📦 Batching 策略</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">Continuous Batching<br>动态插入/移除请求<br>GPU 利用率 → 90%+<br>vLLM, TGI 核心技术</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(255,165,0,.2);border-radius:10px;padding:16px">
+<div style="font-weight:600;color:#ffa500;font-size:.9rem;margin-bottom:8px">📄 PagedAttention</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">KV Cache 分页管理<br>类似 OS 虚拟内存<br>消除显存碎片<br>vLLM 核心创新</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(200,100,255,.2);border-radius:10px;padding:16px">
+<div style="font-weight:600;color:#c864ff;font-size:.9rem;margin-bottom:8px">🔮 投机解码 (Speculative)</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Claude 3.5 Sonnet、GPT-4o 的快速响应背后就是投机解码 + KV cache 优化的组合拳。小模型"猜"、大模型"验"，把生成速度提升了 2-3x。
+</div>
+
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">小模型快速草拟<br>大模型并行验证<br>2-3× 加速无损<br>Medusa, EAGLE</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(255,100,200,.2);border-radius:10px;padding:16px">
+<div style="font-weight:600;color:#ff64c8;font-size:.9rem;margin-bottom:8px">⚡ FlashAttention</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">IO-aware 注意力算法<br>减少 HBM 读写<br>Tiling + 在线 softmax<br>2-4× attention 加速</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(255,200,0,.2);border-radius:10px;padding:16px">
+<div style="font-weight:600;color:#ffc800;font-size:.9rem;margin-bottom:8px">🏗️ 模型并行推理</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6">Tensor Parallel 切分<br>多卡协同推理<br>降低单请求延迟<br>大模型必备</div>
+</div>
+</div>
+
+<!-- Serving Frameworks -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:30px;overflow-x:auto">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1rem;text-align:center">🛠️ 主流推理框架对比</div>
+<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">框架</th>
+<th style="padding:10px;text-align:center;color:#64c8ff">核心特性</th>
+<th style="padding:10px;text-align:center;color:#ffa500">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">vLLM</td>
+<td style="padding:10px;text-align:center">PagedAttention + Continuous Batching</td>
+<td style="padding:10px;text-align:center;color:#666">高吞吐量服务</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">TensorRT-LLM</td>
+<td style="padding:10px;text-align:center">NVIDIA 深度优化 + FP8</td>
+<td style="padding:10px;text-align:center;color:#666">极致性能（NVIDIA GPU）</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">llama.cpp</td>
+<td style="padding:10px;text-align:center">CPU/Metal 推理 + GGUF 量化</td>
+<td style="padding:10px;text-align:center;color:#666">本地/边缘部署</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">SGLang</td>
+<td style="padding:10px;text-align:center">RadixAttention + 结构化生成</td>
+<td style="padding:10px;text-align:center;color:#666">复杂 prompt 工作流</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa;font-weight:600">TGI (HuggingFace)</td>
+<td style="padding:10px;text-align:center">生产就绪 + Token Streaming</td>
+<td style="padding:10px;text-align:center;color:#666">快速部署</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Key Metrics -->
+<div style="background:rgba(100,200,255,.03);border:1px solid rgba(100,200,255,.2);border-radius:12px;padding:22px;max-width:700px;margin:0 auto">
+<div style="font-weight:700;color:#64c8ff;margin-bottom:12px;font-size:1rem">📊 推理性能关键指标</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8">
+<div style="margin-bottom:6px"><span style="color:#64c8ff">•</span> <b style="color:#ddd">TTFT</b> (Time to First Token) — 首 token 延迟，用户感知的响应速度</div>
+<div style="margin-bottom:6px"><span style="color:#64c8ff">•</span> <b style="color:#ddd">TPS</b> (Tokens per Second) — 生成速度，decode 阶段的吞吐</div>
+<div style="margin-bottom:6px"><span style="color:#64c8ff">•</span> <b style="color:#ddd">Throughput</b> — 系统总吞吐量（tokens/s across all requests）</div>
+<div style="margin-bottom:6px"><span style="color:#64c8ff">•</span> <b style="color:#ddd">显存占用</b> — 模型权重 + KV Cache + 激活值</div>
+<div><span style="color:#64c8ff">•</span> <b style="color:#ddd">Cost/Token</b> — 每 token 推理成本，决定商业可行性</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 核心概念深入 Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">🧠 核心概念深入</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">用费曼式类比，直觉理解推理的本质</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:30px">
+
+<div style="background:rgba(100,200,255,.04);border:1px solid rgba(100,200,255,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#64c8ff;margin-bottom:10px;font-size:1rem">🔗 为什么自回归生成是顺序的？</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+<div style="background:rgba(100,200,255,.08);border-radius:8px;padding:12px;margin-bottom:10px">
+<div style="color:#64c8ff;font-size:.8rem;font-weight:600;margin-bottom:6px">💡 类比：写一句话</div>
+<div style="color:#aaa;font-size:.82rem">想象你在写"今天天气真好"。你必须先写"今"，才能决定下一个字是"天"而不是"年"。每个字都依赖前面所有字的语境。</div>
+</div>
+<div style="color:#aaa;font-size:.82rem;line-height:1.7">
+<span style="color:#64c8ff">•</span> 每个 token 的概率分布取决于所有前文<br>
+<span style="color:#64c8ff">•</span> P(x₊ | x₁, x₂, ..., x₊₋₁) — 条件概率链<br>
+<span style="color:#64c8ff">•</span> 这就是为什么生成不能并行：下一个词还没"出生"<br>
+<span style="color:#64c8ff">•</span> 训练时可以并行（Teacher Forcing），推理时不行
+</div>
+</div>
+</div>
+
+<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:1rem">⚡ Prefill vs Decode 的本质区别</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+<div style="background:rgba(0,255,136,.08);border-radius:8px;padding:12px;margin-bottom:10px">
+<div style="color:#00ff88;font-size:.8rem;font-weight:600;margin-bottom:6px">💡 类比：读书 vs 写作</div>
+<div style="color:#aaa;font-size:.82rem">Prefill 像快速阅读一整页（并行处理已知文本），Decode 像一个字一个字地创作（每步依赖上一步）。读书快因为内容已知，写作慢因为要"想"。</div>
+</div>
+<div style="color:#aaa;font-size:.82rem;line-height:1.7">
+<span style="color:#00ff88">•</span> <b style="color:#ddd">Prefill</b>：Compute-bound，GPU 算力是瓶颈<br>
+<span style="color:#00ff88">•</span> <b style="color:#ddd">Decode</b>：Memory-bound，显存带宽是瓶颈<br>
+<span style="color:#00ff88">•</span> Prefill 处理 N 个 token 只需 1 次前向传播<br>
+<span style="color:#00ff88">•</span> Decode 生成 N 个 token 需要 N 次前向传播<br>
+<span style="color:#00ff88">•</span> 优化方向完全不同：一个要更多算力，一个要更快的内存
+</div>
+</div>
+</div>
+
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:1rem">🌡️ Temperature 与采样的直觉</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+<div style="background:rgba(255,165,0,.08);border-radius:8px;padding:12px;margin-bottom:10px">
+<div style="color:#ffa500;font-size:.8rem;font-weight:600;margin-bottom:6px">💡 类比：创造力旋钮</div>
+<div style="color:#aaa;font-size:.82rem">Temperature 就像一个"创造力旋钮"。调低（0.1）= 保守谨慎，总选最可能的词；调高（1.5）= 天马行空，可能出奇迹也可能说胡话。</div>
+</div>
+<div style="color:#aaa;font-size:.82rem;line-height:1.7">
+<span style="color:#ffa500">•</span> T→0：概率分布变尖锐，趋近 greedy（确定性）<br>
+<span style="color:#ffa500">•</span> T=1：原始分布，模型"本色出演"<br>
+<span style="color:#ffa500">•</span> T>1：分布变平坦，低概率词也有机会<br>
+<span style="color:#ffa500">•</span> 数学本质：logits / T → softmax，T 越大越均匀<br>
+<span style="color:#ffa500">•</span> 实践：代码生成用 0.2，创意写作用 0.8-1.0
+</div>
+</div>
+</div>
+
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:10px;font-size:1rem">🗜️ 为什么量化几乎不损失质量？</div>
+<div style="font-size:.85rem;color:#bbb;line-height:1.8;margin-bottom:12px">
+<div style="background:rgba(200,100,255,.08);border-radius:8px;padding:12px;margin-bottom:10px">
+<div style="color:#c864ff;font-size:.8rem;font-weight:600;margin-bottom:6px">💡 类比：JPEG 压缩</div>
+<div style="color:#aaa;font-size:.82rem">就像 JPEG 把图片从 10MB 压到 500KB，人眼看不出区别。模型权重中大量信息是"冗余"的，用更少的比特表示，模型的"理解力"几乎不变。</div>
+</div>
+<div style="color:#aaa;font-size:.82rem;line-height:1.7">
+<span style="color:#c864ff">•</span> 神经网络对噪声天然鲁棒（训练时就有 dropout）<br>
+<span style="color:#c864ff">•</span> 权重分布集中，离群值少 → 量化误差小<br>
+<span style="color:#c864ff">•</span> FP16→INT4：每个权重从 16bit 变 4bit，省 4× 显存<br>
+<span style="color:#c864ff">•</span> 关键技巧：按 group 量化 + 保留离群值精度<br>
+<span style="color:#c864ff">•</span> 实测：INT4 在大多数 benchmark 上损失 < 1%
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- ===== 替代方案与优化 Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">🚀 替代方案与优化</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">超越标准自回归：前沿加速与生成技术</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:30px">
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(0,255,136,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:1rem">🔮 投机解码深入解析</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:10px"><b style="color:#ddd">Draft-Verify 范式：</b></div>
+<span style="color:#00ff88">1.</span> 小模型（Draft）快速生成 γ 个候选 token<br>
+<span style="color:#00ff88">2.</span> 大模型（Target）一次前向传播并行验证所有候选<br>
+<span style="color:#00ff88">3.</span> 从左到右接受匹配的 token，在第一个不匹配处重新采样<br>
+<div style="margin-top:10px;background:rgba(0,255,136,.08);border-radius:6px;padding:10px">
+<div style="color:#00ff88;font-size:.78rem;font-weight:600;margin-bottom:4px">为什么是无损的？</div>
+<div style="font-size:.78rem;color:#aaa">通过修正后的拒绝采样（modified rejection sampling），数学上保证输出分布与大模型独立生成完全一致。接受的 token 概率 = min(1, p_target/p_draft)。</div>
+</div>
+<div style="margin-top:8px;font-size:.78rem;color:#888">
+变体：Medusa（多头并行猜测）、EAGLE（特征级草稿）、Lookahead Decoding（Jacobi 迭代）
+</div>
+</div>
+</div>
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(100,200,255,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#64c8ff;margin-bottom:10px;font-size:1rem">⚡ 非自回归生成尝试</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:10px"><b style="color:#ddd">打破顺序生成的枷锁：</b></div>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">并行解码</b>：一次预测多个位置，迭代修正<br>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">Diffusion LM</b>：将文本生成建模为去噪过程<br>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">Mask-Predict</b>：先生成全部（含 [MASK]），再迭代填充<br>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">CMLM</b>：条件 Masked LM，多轮并行解码<br>
+<div style="margin-top:10px;background:rgba(100,200,255,.08);border-radius:6px;padding:10px">
+<div style="color:#64c8ff;font-size:.78rem;font-weight:600;margin-bottom:4px">现状与挑战</div>
+<div style="font-size:.78rem;color:#aaa">质量仍不及自回归模型，尤其在长文本连贯性上。但在特定场景（翻译、语音合成）已有成功应用。文本扩散模型（如 MDLM）是活跃研究方向。</div>
+</div>
+</div>
+</div>
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(255,165,0,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:1rem">💾 KV Cache 压缩技术</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:10px"><b style="color:#ddd">减少 KV Cache 显存占用：</b></div>
+<span style="color:#ffa500">•</span> <b style="color:#ddd">GQA</b>（Grouped Query Attention）：多个 Q 头共享 KV 头<br>
+<span style="color:#ffa500">•</span> <b style="color:#ddd">MQA</b>（Multi-Query Attention）：所有 Q 头共享 1 组 KV<br>
+<span style="color:#ffa500">•</span> <b style="color:#ddd">MLA</b>（Multi-head Latent Attention）：低秩压缩 KV<br>
+<span style="color:#ffa500">•</span> <b style="color:#ddd">Sliding Window</b>：只保留最近 W 个 token 的 KV<br>
+<span style="color:#ffa500">•</span> <b style="color:#ddd">H2O</b>（Heavy Hitter Oracle）：只保留高注意力分数的 KV<br>
+<div style="margin-top:10px;background:rgba(255,165,0,.08);border-radius:6px;padding:10px">
+<div style="color:#ffa500;font-size:.78rem;font-weight:600;margin-bottom:4px">效果对比</div>
+<div style="font-size:.78rem;color:#aaa">GQA（Llama 2 用）：KV Cache 减少 4-8×<br>MLA（DeepSeek-V2 用）：压缩比高达 93%<br>Sliding Window（Mistral 用）：固定显存，支持无限长度</div>
+</div>
+</div>
+</div>
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(200,100,255,.25);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:10px;font-size:1rem">📐 结构化生成</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<div style="margin-bottom:10px"><b style="color:#ddd">让 LLM 输出严格符合格式：</b></div>
+<span style="color:#c864ff">•</span> <b style="color:#ddd">约束解码</b>：在采样时屏蔽不合法 token<br>
+<span style="color:#c864ff">•</span> <b style="color:#ddd">Grammar-guided</b>：用 CFG/正则约束输出<br>
+<span style="color:#c864ff">•</span> <b style="color:#ddd">JSON Mode</b>：保证输出是合法 JSON<br>
+<span style="color:#c864ff">•</span> <b style="color:#ddd">Outlines/Guidance</b>：开源结构化生成框架<br>
+<div style="margin-top:10px;background:rgba(200,100,255,.08);border-radius:6px;padding:10px">
+<div style="color:#c864ff;font-size:.78rem;font-weight:600;margin-bottom:4px">工作原理</div>
+<div style="font-size:.78rem;color:#aaa">在每一步解码时，根据当前状态（已生成的部分）计算哪些 token 是"合法的下一步"，将不合法 token 的 logit 设为 -∞。零额外延迟，100% 格式保证。</div>
+</div>
+<div style="margin-top:8px;font-size:.78rem;color:#888">
+应用：API 调用、工具使用、数据提取、Agent 决策
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- ===== 常见问题 FAQ Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">❓ 常见问题</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">关于 LLM 推理的高频疑问</p>
+
+<div style="max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(100,200,255,.2);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#64c8ff;margin-bottom:10px;font-size:.95rem">Q1：为什么 LLM 推理这么贵？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<b style="color:#ddd">成本构成：</b><br>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">GPU 硬件</b>：A100/H100 单卡 $1-3/小时，70B 模型需要多卡<br>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">显存占用</b>：模型权重 + KV Cache + 激活值，大模型需要大量 HBM<br>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">低利用率</b>：Decode 阶段 GPU 算力利用率仅 5-15%（memory-bound）<br>
+<span style="color:#64c8ff">•</span> <b style="color:#ddd">序列长度</b>：KV Cache 随 context 线性增长，长对话成本翻倍<br>
+<div style="margin-top:8px;color:#888;font-size:.8rem">💡 降本路径：量化（4× 省显存）+ Batching（10× 提吞吐）+ 投机解码（2-3× 加速）</div>
+</div>
+</div>
+
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(0,255,136,.2);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:.95rem">Q2：如何选择延迟优化 vs 吞吐量优化？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<span style="color:#00ff88">•</span> <b style="color:#ddd">优化延迟</b>（单请求快）：实时对话、代码补全、交互式应用<br>
+&nbsp;&nbsp;&nbsp;→ 投机解码、Tensor Parallel、更快的硬件<br>
+<span style="color:#00ff88">•</span> <b style="color:#ddd">优化吞吐</b>（总处理量大）：批量处理、离线分析、API 服务<br>
+&nbsp;&nbsp;&nbsp;→ Continuous Batching、大 batch size、Pipeline Parallel<br>
+<span style="color:#00ff88">•</span> <b style="color:#ddd">两者兼顾</b>：Prefill-Decode 分离（PD Disaggregation）<br>
+&nbsp;&nbsp;&nbsp;→ 不同机器分别优化 Prefill 和 Decode<br>
+<div style="margin-top:8px;color:#888;font-size:.8rem">💡 经验法则：面向用户 → 优先延迟；面向系统 → 优先吞吐</div>
+</div>
+</div>
+
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,165,0,.2);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:.95rem">Q3：什么时候用量化 vs 蒸馏？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<span style="color:#ffa500">•</span> <b style="color:#ddd">量化</b>：快速部署，不需要重新训练，精度损失小<br>
+&nbsp;&nbsp;&nbsp;→ 适合：已有大模型想快速上线，资源有限<br>
+&nbsp;&nbsp;&nbsp;→ 局限：INT4 以下质量下降明显，不改变计算量<br>
+<span style="color:#ffa500">•</span> <b style="color:#ddd">蒸馏</b>：训练小模型模仿大模型，从根本上减少参数<br>
+&nbsp;&nbsp;&nbsp;→ 适合：有训练资源，追求极致性价比<br>
+&nbsp;&nbsp;&nbsp;→ 局限：需要训练数据和算力，效果有上限<br>
+<div style="margin-top:8px;color:#888;font-size:.8rem">💡 最佳实践：先蒸馏得到小模型，再量化部署 = 双重压缩</div>
+</div>
+</div>
+
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(200,100,255,.2);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:10px;font-size:.95rem">Q4：为什么上下文越长，生成越慢？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<span style="color:#c864ff">•</span> <b style="color:#ddd">KV Cache 增大</b>：每个 token 都要 attend 到所有历史 token<br>
+<span style="color:#c864ff">•</span> <b style="color:#ddd">Attention 计算</b>：标准 attention O(n²)，即使有 FlashAttention 也是 O(n)<br>
+<span style="color:#c864ff">•</span> <b style="color:#ddd">显存带宽</b>：更大的 KV Cache 需要更多时间从 HBM 读取<br>
+<span style="color:#c864ff">•</span> <b style="color:#ddd">Prefill 变慢</b>：长 prompt 的 prefill 时间线性增长<br>
+<div style="margin-top:8px;color:#888;font-size:.8rem">💡 缓解方案：Sliding Window Attention、稀疏注意力、KV Cache 量化、Ring Attention（分布式长序列）</div>
+</div>
+</div>
+
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,107,107,.2);border-radius:12px;padding:20px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:10px;font-size:.95rem">Q5：推理优化的未来方向？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<span style="color:#ff6b6b">•</span> <b style="color:#ddd">硬件专用化</b>：Groq LPU、Cerebras WSE — 专为推理设计的芯片<br>
+<span style="color:#ff6b6b">•</span> <b style="color:#ddd">模型架构革新</b>：Mamba/SSM 线性复杂度、混合架构<br>
+<span style="color:#ff6b6b">•</span> <b style="color:#ddd">动态计算</b>：Early Exit、MoE 稀疏激活 — 简单问题用更少计算<br>
+<span style="color:#ff6b6b">•</span> <b style="color:#ddd">编译优化</b>：torch.compile、Triton 自定义 kernel — 软件层极致优化<br>
+<span style="color:#ff6b6b">•</span> <b style="color:#ddd">缓存与复用</b>：Semantic Cache、Prompt Cache — 避免重复计算<br>
+<div style="margin-top:8px;color:#888;font-size:.8rem">💡 趋势：推理成本每年下降 10×，最终让大模型像水电一样便宜</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- ===== ☁️ AWS 推理部署选型 Section ===== -->
+<div style="margin-top:60px;padding-top:35px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">☁️ AWS 推理部署选型</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">从全托管到自建部署 — 选择适合你的 AWS 推理方案</p>
+
+<!-- 1. AWS 推理方案全景图 -->
+<div style="margin-bottom:30px">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1.1rem;text-align:center">🗺️ AWS 推理方案全景图 — 三大路径</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+
+<div style="background:rgba(0,255,136,.04);border:2px solid rgba(0,255,136,.35);border-radius:14px;padding:22px;position:relative">
+<div style="position:absolute;top:-10px;right:15px;background:#00ff88;color:#000;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:10px">最简单</div>
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:1rem">🟢 Amazon Bedrock</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<b style="color:#ddd">全托管，零运维</b><br>
+<span style="color:#00ff88">•</span> 无需管理基础设施，API 直接调用<br>
+<span style="color:#00ff88">•</span> 支持 Claude、Llama、Mistral 等主流模型<br>
+<span style="color:#00ff88">•</span> 内置安全护栏（Guardrails）、RAG（Knowledge Bases）<br>
+<span style="color:#00ff88">•</span> 按 token 计费，无最低消费<br>
+<div style="margin-top:10px;background:rgba(0,255,136,.08);border-radius:6px;padding:10px">
+<div style="color:#00ff88;font-size:.78rem;font-weight:600;margin-bottom:4px">适合团队</div>
+<div style="font-size:.78rem;color:#aaa">快速原型、无 ML 团队的企业、追求 time-to-market</div>
+</div>
+</div>
+</div>
+
+<div style="background:rgba(100,200,255,.04);border:1px solid rgba(100,200,255,.35);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#64c8ff;margin-bottom:10px;font-size:1rem">🔵 SageMaker Endpoints</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<b style="color:#ddd">半托管，可定制</b><br>
+<span style="color:#64c8ff">•</span> 自选模型 + 自选推理容器（TGI、vLLM、TRT-LLM）<br>
+<span style="color:#64c8ff">•</span> 支持自定义预/后处理逻辑<br>
+<span style="color:#64c8ff">•</span> 自动扩缩容、A/B 测试、Shadow 部署<br>
+<span style="color:#64c8ff">•</span> Inference Components 多模型共享实例<br>
+<div style="margin-top:10px;background:rgba(100,200,255,.08);border-radius:6px;padding:10px">
+<div style="color:#64c8ff;font-size:.78rem;font-weight:600;margin-bottom:4px">适合团队</div>
+<div style="font-size:.78rem;color:#aaa">有 ML 团队、需要模型定制、Fine-tuned 模型部署</div>
+</div>
+</div>
+</div>
+
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.35);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:1rem">🟠 自建部署 on EC2/EKS</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.8">
+<b style="color:#ddd">完全控制</b><br>
+<span style="color:#ffa500">•</span> 直接在 EC2/EKS 上运行 vLLM、TGI、TRT-LLM<br>
+<span style="color:#ffa500">•</span> 完全掌控网络、安全、调度策略<br>
+<span style="color:#ffa500">•</span> 支持自定义 kernel、自研优化<br>
+<span style="color:#ffa500">•</span> 可用 Spot 实例进一步降本<br>
+<div style="margin-top:10px;background:rgba(255,165,0,.08);border-radius:6px;padding:10px">
+<div style="color:#ffa500;font-size:.78rem;font-weight:600;margin-bottom:4px">适合团队</div>
+<div style="font-size:.78rem;color:#aaa">深度 infra 能力、特殊合规要求、追求极致性价比</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- 2. 选型决策树 -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:24px;margin-bottom:30px">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1.1rem;text-align:center">🌲 选型决策树</div>
+<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:20px;font-family:'Courier New',monospace;font-size:.82rem;line-height:2;color:#bbb;overflow-x:auto">
+<span style="color:#64c8ff;font-weight:700">需要自定义推理逻辑？</span><br>
+<span style="color:#888">├──</span> <span style="color:#ff6b6b">否</span> → <span style="color:#00ff88;font-weight:600">Bedrock</span> <span style="color:#888">(最简单)</span><br>
+<span style="color:#888">│&nbsp;&nbsp;&nbsp;├──</span> 需要稳定吞吐？→ <span style="color:#00ff88">Provisioned Throughput</span><br>
+<span style="color:#888">│&nbsp;&nbsp;&nbsp;├──</span> 按需即可？→ <span style="color:#00ff88">On-demand</span><br>
+<span style="color:#888">│&nbsp;&nbsp;&nbsp;└──</span> 大批量离线？→ <span style="color:#00ff88">Batch Inference</span><br>
+<span style="color:#888">└──</span> <span style="color:#00ff88">是</span> → <span style="color:#64c8ff;font-weight:600">需要多大控制权？</span><br>
+<span style="color:#888">&nbsp;&nbsp;&nbsp;&nbsp;├──</span> 模型+部署都定制 → <span style="color:#ffa500;font-weight:600">EC2/EKS 自建</span> <span style="color:#888">(vLLM/TGI)</span><br>
+<span style="color:#888">&nbsp;&nbsp;&nbsp;&nbsp;└──</span> 模型定制,部署托管 → <span style="color:#64c8ff;font-weight:600">SageMaker Endpoint</span>
+</div>
+<div class="note" style="max-width:600px;margin:14px auto 0">
+💡 <b style="color:#ddd">经验法则：</b>80% 的场景 Bedrock 就够了。只有需要 Fine-tuned 模型、自定义推理逻辑、或极致成本优化时才需要 SageMaker/EC2。
+</div>
+</div>
+
+<!-- 3. 硬件选型对比 -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;margin-bottom:30px;overflow-x:auto">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1.1rem;text-align:center">🖥️ 硬件选型对比</div>
+<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">实例</th>
+<th style="padding:10px;text-align:center;color:#64c8ff">芯片</th>
+<th style="padding:10px;text-align:center;color:#ffa500">适用场景</th>
+<th style="padding:10px;text-align:center;color:#00ff88">性价比</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">inf2</td>
+<td style="padding:10px;text-align:center;color:#ddd">Inferentia2</td>
+<td style="padding:10px;text-align:center;color:#888">大模型推理，高吞吐</td>
+<td style="padding:10px;text-align:center;color:#00ff88">⭐⭐⭐</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">trn1</td>
+<td style="padding:10px;text-align:center;color:#ddd">Trainium</td>
+<td style="padding:10px;text-align:center;color:#888">训练+推理</td>
+<td style="padding:10px;text-align:center;color:#00ff88">⭐⭐⭐</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">p5</td>
+<td style="padding:10px;text-align:center;color:#ddd">H100</td>
+<td style="padding:10px;text-align:center;color:#888">超大模型，最强性能</td>
+<td style="padding:10px;text-align:center;color:#ff6b6b">⭐</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#aaa;font-weight:600">p4d</td>
+<td style="padding:10px;text-align:center;color:#ddd">A100</td>
+<td style="padding:10px;text-align:center;color:#888">通用 GPU 推理</td>
+<td style="padding:10px;text-align:center;color:#ffa500">⭐⭐</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#aaa;font-weight:600">g5</td>
+<td style="padding:10px;text-align:center;color:#ddd">A10G</td>
+<td style="padding:10px;text-align:center;color:#888">中小模型，性价比高</td>
+<td style="padding:10px;text-align:center;color:#00ff88">⭐⭐⭐</td>
+</tr>
+</tbody>
+</table>
+<div class="note" style="max-width:700px;margin:14px auto 0">
+💡 <b style="color:#ddd">推荐策略：</b>优先考虑 inf2（Inferentia2）获取最佳性价比。如果模型不支持 Neuron SDK 编译，退回 g5（中小模型）或 p4d/p5（大模型）。
+</div>
+</div>
+
+<!-- 4. 关键优化技术（AWS 实现） -->
+<div style="margin-bottom:30px">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1.1rem;text-align:center">⚙️ 关键优化技术（AWS 实现）</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(0,255,136,.25);border-radius:12px;padding:18px">
+<div style="font-weight:600;color:#00ff88;font-size:.9rem;margin-bottom:8px">🧠 Inferentia2 NeuronCore 流水线并行</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.7">
+<span style="color:#00ff88">•</span> 模型自动切分到多个 NeuronCore<br>
+<span style="color:#00ff88">•</span> 流水线并行 + 数据并行混合<br>
+<span style="color:#00ff88">•</span> Neuron SDK 自动优化计算图<br>
+<span style="color:#00ff88">•</span> 支持 Llama、GPT、Mixtral 等架构<br>
+<span style="color:#888;font-size:.75rem">成本比 GPU 低 40-70%，延迟相当</span>
+</div>
+</div>
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(100,200,255,.25);border-radius:12px;padding:18px">
+<div style="font-weight:600;color:#64c8ff;font-size:.9rem;margin-bottom:8px">📦 SageMaker Inference Components</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.7">
+<span style="color:#64c8ff">•</span> 多个模型共享同一实例的 GPU<br>
+<span style="color:#64c8ff">•</span> 按模型独立设置副本数和自动扩缩容<br>
+<span style="color:#64c8ff">•</span> 动态路由请求到最优副本<br>
+<span style="color:#64c8ff">•</span> 显著提高 GPU 利用率<br>
+<span style="color:#888;font-size:.75rem">多模型场景成本降低 50%+</span>
+</div>
+</div>
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(200,100,255,.25);border-radius:12px;padding:18px">
+<div style="font-weight:600;color:#c864ff;font-size:.9rem;margin-bottom:8px">🌍 Bedrock Cross-Region Inference</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.7">
+<span style="color:#c864ff">•</span> 请求自动路由到最优区域<br>
+<span style="color:#c864ff">•</span> 跨区域负载均衡，消除单区域瓶颈<br>
+<span style="color:#c864ff">•</span> 无需代码修改，一键启用<br>
+<span style="color:#c864ff">•</span> 提高可用性和降低延迟<br>
+<span style="color:#888;font-size:.75rem">吞吐量提升 2-3×，高峰不限流</span>
+</div>
+</div>
+
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(255,200,0,.25);border-radius:12px;padding:18px">
+<div style="font-weight:600;color:#ffc800;font-size:.9rem;margin-bottom:8px">💾 Bedrock Prompt Caching</div>
+<div style="font-size:.8rem;color:#aaa;line-height:1.7">
+<span style="color:#ffc800">•</span> 重复前缀自动缓存（system prompt、few-shot）<br>
+<span style="color:#ffc800">•</span> 相同前缀的后续请求跳过 prefill<br>
+<span style="color:#ffc800">•</span> 延迟降低 85%，成本降低 90%<br>
+<span style="color:#ffc800">•</span> 对长 context 应用效果显著<br>
+<span style="color:#888;font-size:.75rem">RAG、多轮对话场景必开</span>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- 5. 成本估算参考 -->
+<div style="background:rgba(100,200,255,.03);border:1px solid rgba(100,200,255,.2);border-radius:14px;padding:24px;max-width:800px;margin:0 auto">
+<div style="font-weight:700;color:#64c8ff;margin-bottom:16px;font-size:1.1rem;text-align:center">💰 成本估算参考</div>
+<div style="font-size:.85rem;color:#aaa;margin-bottom:14px;text-align:center">以 Claude Sonnet 为例 — 月处理 100M input tokens + 20M output tokens</div>
+<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px;text-align:left;color:#888">方案</th>
+<th style="padding:10px;text-align:center;color:#64c8ff">月成本估算</th>
+<th style="padding:10px;text-align:center;color:#ffa500">特点</th>
+<th style="padding:10px;text-align:center;color:#00ff88">适合场景</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#ddd;font-weight:600">Bedrock On-demand</td>
+<td style="padding:10px;text-align:center;color:#64c8ff">~$600</td>
+<td style="padding:10px;text-align:center;color:#888">按量付费，零承诺</td>
+<td style="padding:10px;text-align:center;color:#888">流量不稳定</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#ddd;font-weight:600">Bedrock + Prompt Cache</td>
+<td style="padding:10px;text-align:center;color:#00ff88">~$150</td>
+<td style="padding:10px;text-align:center;color:#888">缓存命中后降本 90%</td>
+<td style="padding:10px;text-align:center;color:#888">固定前缀多轮对话</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#ddd;font-weight:600">Bedrock Batch</td>
+<td style="padding:10px;text-align:center;color:#00ff88">~$300</td>
+<td style="padding:10px;text-align:center;color:#888">50% 折扣，异步处理</td>
+<td style="padding:10px;text-align:center;color:#888">离线批处理</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:10px;color:#ddd;font-weight:600">Provisioned Throughput</td>
+<td style="padding:10px;text-align:center;color:#ffa500">~$20,000+</td>
+<td style="padding:10px;text-align:center;color:#888">固定吞吐，稳定延迟</td>
+<td style="padding:10px;text-align:center;color:#888">高并发生产服务</td>
+</tr>
+<tr>
+<td style="padding:10px;color:#ddd;font-weight:600">自建 (inf2 + 开源模型)</td>
+<td style="padding:10px;text-align:center;color:#00ff88">~$800-2,000</td>
+<td style="padding:10px;text-align:center;color:#888">固定成本，无限 token</td>
+<td style="padding:10px;text-align:center;color:#888">超高量、可接受开源模型</td>
+</tr>
+</tbody>
+</table>
+<div class="note" style="margin-top:14px">
+⚠️ <b style="color:#ddd">注意：</b>以上为估算参考，实际费用取决于区域、模型版本、token 长度分布等。Prompt Caching 效果取决于缓存命中率。自建方案需额外计入运维人力成本。建议使用 <b style="color:#64c8ff">AWS Pricing Calculator</b> 获取精确报价。
+</div>
+</div>
+
+</div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="index.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:10px;color:#ccc;font-size:.9rem">📚 返回目录</a>
+<a href="rl-reasoning.html" style="text-decoration:none;padding:14px 24px;background:rgba(200,100,255,.08);border:1px solid rgba(200,100,255,.4);border-radius:10px;color:#c864ff;font-size:.9rem">← 推理强化 (RL)</a>
+<a href="rag.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.4);border-radius:10px;color:#ffc800;font-size:.9rem">RAG →</a>
+</div>
+</div>
+</div>
+<script>
+const stages=[
+{n:1,title:"接收用户输入 (Prompt)",desc:"用户发送文本请求。推理服务接收 prompt，进入处理队列。对于 chat 模型，会拼接 system prompt + 历史对话 + 当前输入。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:450px;margin:0 auto;text-align:left;font-size:.8rem;line-height:1.8;font-family:monospace"><span style="color:#c864ff">[system]</span> <span style="color:#888">You are a helpful assistant.</span><br><span style="color:#ffa500">[user]</span> <span style="color:#aaa">解释什么是 KV Cache</span><br><span style="color:#00ff88">[assistant]</span> <span style="color:#666">← 待生成</span></div></div>'},
+{n:2,title:"分词 (Tokenization)",desc:"将拼接后的完整文本通过 tokenizer 转换为 token ID 序列。这一步在 CPU 上完成，速度很快。",
+ viz:()=>{const pairs=[["解释","15234"],["什么","8821"],["是","340"],["KV","29968"],["Cache","10408"]];let h='<div style="width:100%;text-align:center"><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">';pairs.forEach((p,i)=>{h+=`<span class="tok tok-id" style="animation-delay:${i*.1}s">${p[0]}→${p[1]}</span>`});h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">Prompt tokens: 约 20-50 个（含 system + template）</div></div>';return h}},
+{n:3,title:"Prefill 阶段 (Prompt Processing)",desc:"将所有 prompt tokens 一次性并行送入模型。计算所有层的 K、V 值并存入 KV Cache。这是计算密集型阶段，GPU 利用率高。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:6px">';h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';for(let i=0;i<8;i++){h+=`<div style="background:rgba(100,200,255,.15);border:1px solid rgba(100,200,255,.4);border-radius:4px;padding:4px 8px;font-size:.7rem;color:#64c8ff;animation:fadeUp .3s ease forwards;opacity:0;animation-delay:${i*.05}s">tok${i}</div>`}h+='</div>';h+='<div style="color:rgba(255,255,255,.3)">↓ 并行计算（一次前向传播）↓</div>';h+='<div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:8px;padding:10px 20px;font-size:.8rem;color:#00ff88">KV Cache 填充完毕 ✓</div>';h+='<div style="margin-top:8px;font-size:.78rem;color:#888">Prefill 延迟 = TTFT（首 token 时间）</div>';h+='</div></div>';return h}},
+{n:4,title:"Decode 阶段开始 (Autoregressive)",desc:"进入自回归生成循环：每次只输入上一步生成的 1 个 token，利用 KV Cache 中已缓存的历史信息，计算下一个 token 的概率分布。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap"><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:8px 12px;font-size:.8rem;color:#00ff88">KV Cache<br><span style="font-size:.65rem;color:#888">(历史 K,V)</span></div><span style="color:#ffa500;font-size:1.2rem">+</span><div style="background:rgba(100,200,255,.15);border:1px solid rgba(100,200,255,.4);border-radius:6px;padding:8px 12px;font-size:.8rem;color:#64c8ff">新 token<br><span style="font-size:.65rem;color:#888">(只算 Q,K,V)</span></div><span style="color:#888;font-size:1.2rem">→</span><div style="background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);border-radius:6px;padding:8px 12px;font-size:.8rem;color:#c864ff">Logits<br><span style="font-size:.65rem;color:#888">(下一 token 概率)</span></div></div><div class="note">Decode 是 memory-bound：瓶颈在读取模型权重和 KV Cache，不是计算</div></div>'},
+{n:5,title:"采样策略 (Sampling / Decoding)",desc:"从 logits 概率分布中选择下一个 token。不同策略影响输出的确定性和创造性：Greedy、Temperature、Top-k、Top-p、Beam Search。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;max-width:500px;margin:0 auto">';const strategies=[{k:"Greedy",v:"确定性最高",c:"#64c8ff"},{k:"Temperature",v:"控制随机性",c:"#ffa500"},{k:"Top-k",v:"前 k 个候选",c:"#00ff88"},{k:"Top-p",v:"累积概率截断",c:"#c864ff"},{k:"Beam Search",v:"多路径搜索",c:"#ff64c8"},{k:"Min-p",v:"动态阈值",c:"#ffc800"}];strategies.forEach((s,i)=>{h+=`<div style="background:${s.c}15;border:1px solid ${s.c}40;border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.08}s"><div style="font-size:.8rem;color:${s.c};font-weight:600">${s.k}</div><div style="font-size:.68rem;color:#888">${s.v}</div></div>`});h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">常用组合：temperature=0.7 + top_p=0.9</div></div>';return h}},
+{n:6,title:"Token Streaming (流式输出)",desc:"每生成一个 token 就立即返回给用户（SSE/WebSocket），而不是等全部生成完。用户看到文字逐步出现，大幅改善体验。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:400px;margin:0 auto"><div style="font-size:.8rem;color:#888;margin-bottom:8px">流式输出效果：</div><div style="text-align:left;font-size:.85rem;color:#aaa;line-height:1.8">';const words=["KV","Cache","是","一种","缓存","机制","，","用于","存储","..."];words.forEach((w,i)=>{h+=`<span style="animation:fadeUp .3s ease forwards;opacity:0;animation-delay:${i*.2}s;display:inline">${w}</span>`});h+='</div></div><div style="margin-top:10px;font-size:.78rem;color:#888">TTFT 后每 ~30-100ms 输出一个 token</div></div>';return h}},
+{n:7,title:"停止条件 (Stop Criteria)",desc:"生成在以下条件停止：遇到 EOS token、达到 max_tokens 限制、匹配 stop sequence（如换行符）。然后进行 detokenize 转回文本。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:8px 14px;font-size:.8rem;color:#00ff88">&lt;EOS&gt; token</div><div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:6px;padding:8px 14px;font-size:.8rem;color:#ffa500">max_tokens 达到</div><div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:8px 14px;font-size:.8rem;color:#c864ff">stop sequence 匹配</div></div><div style="margin-top:10px;font-size:.78rem;color:#888">Token IDs → Detokenize → UTF-8 文本 → 返回用户</div></div>'},
+{n:8,title:"KV Cache 管理",desc:"KV Cache 是推理的显存大户。需要精细管理：PagedAttention 分页避免碎片、Prefix Caching 复用公共前缀、及时释放已完成请求的 cache。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">';const techs=[{name:"PagedAttention",desc:"分页管理，无碎片",c:"#64c8ff"},{name:"Prefix Cache",desc:"共享 system prompt",c:"#00ff88"},{name:"Sliding Window",desc:"固定窗口，省显存",c:"#ffa500"}];techs.forEach((t,i)=>{h+=`<div style="background:${t.c}10;border:1px solid ${t.c}40;border-radius:8px;padding:10px 14px;min-width:140px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s"><div style="font-size:.8rem;color:${t.c};font-weight:600">${t.name}</div><div style="font-size:.7rem;color:#888;margin-top:4px">${t.desc}</div></div>`});h+='</div><div class="note" style="max-width:500px;margin:12px auto 0">70B 模型 + 4K context：KV Cache ≈ 每请求 2-4GB 显存</div></div>';return h}},
+{n:9,title:"Continuous Batching",desc:"传统 batching 等所有请求完成才处理下一批。Continuous Batching 在每个 decode step 动态插入新请求、移除已完成请求，GPU 利用率从 30% 提升到 90%+。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="display:flex;gap:4px;align-items:center"><div style="width:60px;font-size:.7rem;color:#888;text-align:right">Step 1:</div><div style="display:flex;gap:2px"><div style="width:30px;height:16px;background:rgba(100,200,255,.3);border-radius:3px"></div><div style="width:30px;height:16px;background:rgba(0,255,136,.3);border-radius:3px"></div><div style="width:30px;height:16px;background:rgba(255,165,0,.3);border-radius:3px"></div><div style="width:30px;height:16px;background:rgba(200,100,255,.3);border-radius:3px"></div></div></div><div style="display:flex;gap:4px;align-items:center"><div style="width:60px;font-size:.7rem;color:#888;text-align:right">Step 2:</div><div style="display:flex;gap:2px"><div style="width:30px;height:16px;background:rgba(100,200,255,.3);border-radius:3px"></div><div style="width:30px;height:16px;background:rgba(0,255,136,.15);border:1px dashed rgba(0,255,136,.4);border-radius:3px" title="完成"></div><div style="width:30px;height:16px;background:rgba(255,165,0,.3);border-radius:3px"></div><div style="width:30px;height:16px;background:rgba(255,100,200,.3);border-radius:3px"></div></div><span style="font-size:.6rem;color:#00ff88">← 新请求插入</span></div><div style="margin-top:6px;font-size:.78rem;color:#888">每个 step 都可以调整 batch 组成</div></div></div>'},
+{n:10,title:"量化推理 (Quantization)",desc:"将模型权重从 FP16 压缩到 INT8/INT4，显存减少 2-4×，速度提升 1.5-2×，精度损失极小。是部署大模型的标配技术。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">';const levels=[{name:"FP16",size:"140GB",speed:"1×",c:"#ff6b6b"},{name:"INT8",size:"70GB",speed:"1.5×",c:"#ffa500"},{name:"INT4",size:"35GB",speed:"2×",c:"#00ff88"}];levels.forEach((l,i)=>{h+=`<div style="background:${l.c}15;border:1px solid ${l.c}40;border-radius:8px;padding:10px 14px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.15}s"><div style="font-size:.85rem;color:${l.c};font-weight:600">${l.name}</div><div style="font-size:.7rem;color:#888">${l.size} | ${l.speed}</div></div>`;if(i<levels.length-1)h+='<span style="color:#888">→</span>'});h+='</div><div style="font-size:.78rem;color:#888">70B 模型为例：FP16 需要 140GB，INT4 只需 35GB（单卡可跑）</div></div>';return h}},
+{n:11,title:"投机解码 (Speculative Decoding)",desc:"用小模型（draft model）快速生成 N 个候选 token，然后大模型一次性并行验证。验证通过的直接采纳，相当于一步生成多个 token，加速 2-3×。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);border-radius:6px;padding:8px 12px;font-size:.8rem;color:#ffa500">Draft (1B)<br><span style="font-size:.65rem;color:#888">快速猜 5 个 token</span></div><span style="color:#888;font-size:1.2rem">→</span><div style="background:rgba(100,200,255,.15);border:1px solid rgba(100,200,255,.4);border-radius:6px;padding:8px 12px;font-size:.8rem;color:#64c8ff">Target (70B)<br><span style="font-size:.65rem;color:#888">并行验证 5 个</span></div><span style="color:#888;font-size:1.2rem">→</span><div style="background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);border-radius:6px;padding:8px 12px;font-size:.8rem;color:#00ff88">接受 3-4 个 ✓<br><span style="font-size:.65rem;color:#888">一步出多 token</span></div></div><div style="margin-top:8px;font-size:.78rem;color:#888">输出质量与大模型完全一致（数学证明无损）</div></div></div>'},
+{n:12,title:"完整推理 Pipeline 总结",desc:"一次完整的 LLM 推理：Tokenize → Prefill（填充 KV Cache）→ Decode Loop（自回归生成）→ Detokenize → 返回。优化贯穿每个环节。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:10px">';const steps=["Tokenize","Prefill","Decode×N","Sample","Stream","Detokenize"];steps.forEach((s,i)=>{h+=`<div style="background:rgba(100,200,255,${.1+i*.02});border:1px solid rgba(100,200,255,${.3+i*.05});border-radius:20px;padding:6px 14px;font-size:.8rem;color:#64c8ff;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s">${s}</div>`;if(i<steps.length-1)h+='<span style="color:rgba(255,255,255,.2);align-self:center">→</span>'});h+='</div>';h+='<div class="note" style="max-width:500px;margin:0 auto">Prefill = compute-bound（并行）<br>Decode = memory-bound（顺序）<br>优化方向完全不同</div></div>';return h}}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  stages.forEach((s,i)=>{
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="../../assets/common.css">
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/stepper.js"></script>
+<script>
+if (window.renderSATip) {
+  renderSATip('inference.html', [
+    { step: 1, tip: 'SA关注：推理成本占 AI 项目 80%+ 运营支出——选择 Inf2 vs GPU 直接影响客户 TCO' },
+    { step: 6, tip: 'SA关注：量化（INT8/INT4）是生产部署标配——帮客户做 70B 模型单卡部署的关键方案' }
+  ]);
+}
+</script>
+</body>
+</html>

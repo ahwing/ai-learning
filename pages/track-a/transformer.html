@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer 完整链路动画</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#00d2ff,#3a7bd5);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#00d2ff,#3a7bd5);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(0,210,255,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#00d2ff;font-weight:bold}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1);position:relative}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(0,210,255,.4);box-shadow:0 0 25px rgba(0,210,255,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(0,255,136,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#00d2ff,#3a7bd5);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.tok{display:inline-flex;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;font-size:.85rem;animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tok-in{background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);color:#00d2ff}
+.tok-id{background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);color:#ffa500}
+.tok-em{background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);color:#00ff88}
+.tok-pos{background:rgba(255,100,200,.15);border:1px solid rgba(255,100,200,.4);color:#ff64c8}
+.tok-out{background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);color:#c864ff}
+.arrow-d{text-align:center;color:rgba(0,210,255,.5);font-size:1.4rem;margin:5px 0}
+.matrix{display:grid;gap:2px;justify-content:center}
+.m-cell{width:26px;height:26px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:.55rem;font-family:monospace;animation:cellIn .3s ease forwards;opacity:0}
+@keyframes cellIn{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+.attn-wrap{display:flex;gap:15px;flex-wrap:wrap;justify-content:center}
+.attn-head{text-align:center}
+.attn-lbl{font-size:.7rem;color:#888;margin-bottom:4px}
+.attn-map{display:grid;gap:2px}
+.a-cell{width:20px;height:20px;border-radius:2px;transition:background .5s}
+.ffn-wrap{display:flex;align-items:center;justify-content:center;gap:15px;flex-wrap:wrap}
+.ffn-col{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ffn-dot{width:12px;height:12px;border-radius:50%;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.3);opacity:1}}
+.ffn-lbl{font-size:.65rem;color:#888;margin-top:4px}
+.ffn-arr{color:rgba(255,255,255,.3);font-size:1.3rem}
+.prob-wrap{width:100%;max-width:380px}
+.prob-item{display:flex;align-items:center;gap:8px;margin-bottom:7px;animation:fadeUp .4s ease forwards;opacity:0}
+.prob-lbl{width:55px;font-family:monospace;font-size:.8rem;text-align:right;color:#ccc}
+.prob-bg{flex:1;height:18px;background:rgba(255,255,255,.05);border-radius:9px;overflow:hidden}
+.prob-fill{height:100%;border-radius:9px;transition:width 1s cubic-bezier(.4,0,.2,1);width:0}
+.prob-val{width:45px;font-size:.75rem;color:#888}
+.note{background:rgba(0,210,255,.05);border-left:3px solid rgba(0,210,255,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+.phase-divider{display:flex;align-items:center;gap:12px;margin:28px 0 16px;animation:fadeUp .5s ease forwards}
+.phase-divider .line{flex:1;height:1px}
+.phase-divider .pname{font-size:1.05rem;font-weight:800;letter-spacing:.5px;padding:6px 18px;border-radius:20px;white-space:nowrap}
+.phase-prefill .pname{background:linear-gradient(135deg,rgba(0,210,255,.18),rgba(58,123,213,.18));color:#00d2ff;border:1px solid rgba(0,210,255,.45)}
+.phase-prefill .line{background:linear-gradient(90deg,transparent,rgba(0,210,255,.5),transparent)}
+.phase-decode .pname{background:linear-gradient(135deg,rgba(200,100,255,.18),rgba(255,100,200,.18));color:#c864ff;border:1px solid rgba(200,100,255,.45)}
+.phase-decode .line{background:linear-gradient(90deg,transparent,rgba(200,100,255,.5),transparent)}
+.phase-sub{font-size:.78rem;color:#888;margin-left:6px}
+.stage-num.pf{background:linear-gradient(135deg,#00d2ff,#3a7bd5)}
+.stage-num.dc{background:linear-gradient(135deg,#c864ff,#ff64c8)}
+.ptag{display:inline-block;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:8px;vertical-align:middle}
+.ptag.pf{background:rgba(0,210,255,.15);color:#00d2ff;border:1px solid rgba(0,210,255,.4)}
+.ptag.dc{background:rgba(200,100,255,.15);color:#c864ff;border:1px solid rgba(200,100,255,.4)}
+.tok-cache{background:rgba(255,200,0,.13);border:1px dashed rgba(255,200,0,.5);color:#ffc800}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Transformer 推理两阶段</h1>
+<p class="subtitle">Prefill 预填充 → Decode 解码 — 逐步交互式可视化</p>
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">10</span></div>
+<div id="pipeline"></div>
+
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">三大架构派系</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">同一个 Transformer 分化出三条路线，Decoder-only 最终胜出</p>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>GPT-4、Claude 3.5、Gemini 2、LLaMA 3 全部采用 Decoder-only 架构。它的简单性让 scaling 更高效——只需要堆叠相同的 block 就能持续提升能力。
+</div>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:30px">
+<!-- Encoder-only -->
+<div style="flex:1;min-width:260px;max-width:340px;background:rgba(0,210,255,.05);border:1px solid rgba(0,210,255,.25);border-radius:14px;padding:22px">
+<div style="text-align:center;font-weight:700;font-size:1.1rem;color:#00d2ff;margin-bottom:12px">Encoder-only</div>
+<div style="text-align:center;font-size:.8rem;color:#888;margin-bottom:14px">BERT · RoBERTa · DeBERTa</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-bottom:12px">
+<div style="font-size:.8rem;color:#aaa;margin-bottom:8px;text-align:center">注意力方向：双向 ↔</div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:2px">
+<div id="attn-grid-enc-bidir"></div>
+</div>
+<div style="font-size:.7rem;color:#666;text-align:center;margin-top:6px">每个 token 看到所有位置</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 理解/分类/NER/相似度</div>
+<div>❌ 不能生成文本</div>
+<div>📐 训练：完形填空 [MASK]</div>
+</div>
+</div>
+
+<!-- Encoder-Decoder -->
+<div style="flex:1;min-width:260px;max-width:340px;background:rgba(255,165,0,.05);border:1px solid rgba(255,165,0,.25);border-radius:14px;padding:22px">
+<div style="text-align:center;font-weight:700;font-size:1.1rem;color:#ffa500;margin-bottom:12px">Encoder-Decoder</div>
+<div style="text-align:center;font-size:.8rem;color:#888;margin-bottom:14px">T5 · BART · 原始 Transformer</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-bottom:12px">
+<div style="font-size:.8rem;color:#aaa;margin-bottom:8px;text-align:center">Encoder 双向 + Decoder 单向</div>
+<div style="display:flex;gap:8px;justify-content:center">
+<div><div style="font-size:.65rem;color:#888;text-align:center;margin-bottom:3px">Enc</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px">
+<div id="attn-grid-encdec-enc"></div>
+</div></div>
+<div style="color:#888;align-self:center">→</div>
+<div><div style="font-size:.65rem;color:#888;text-align:center;margin-bottom:3px">Dec</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px">
+<div id="attn-grid-encdec-dec"></div>
+</div></div>
+</div>
+<div style="font-size:.7rem;color:#666;text-align:center;margin-top:6px">Cross-attention 连接两端</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 翻译/摘要/seq2seq</div>
+<div>⚠️ 架构复杂，scale 效率低</div>
+<div>📐 训练：去噪/span corruption</div>
+</div>
+</div>
+
+<!-- Decoder-only -->
+<div style="flex:1;min-width:260px;max-width:340px;background:rgba(0,255,136,.05);border:2px solid rgba(0,255,136,.4);border-radius:14px;padding:22px;position:relative">
+<div style="position:absolute;top:-10px;right:15px;background:linear-gradient(135deg,#00ff88,#00cc6a);color:#000;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:10px">🏆 当前主流</div>
+<div style="text-align:center;font-weight:700;font-size:1.1rem;color:#00ff88;margin-bottom:12px">Decoder-only</div>
+<div style="text-align:center;font-size:.8rem;color:#888;margin-bottom:14px">GPT · LLaMA · Claude · Gemini</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;margin-bottom:12px">
+<div style="font-size:.8rem;color:#aaa;margin-bottom:8px;text-align:center">注意力方向：因果/单向 →</div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:2px">
+<div id="attn-grid-dec-causal"></div>
+</div>
+<div style="font-size:.7rem;color:#666;text-align:center;margin-top:6px">每个 token 只看前面的位置（因果掩码）</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 生成/对话/推理/代码/多面手</div>
+<div>✅ 架构最简单，scale 效率最高</div>
+<div>📐 训练：Next Token Prediction</div>
+<div style="margin-top:6px;font-size:.75rem;color:#666">为什么胜出：统一的训练目标 + 简洁架构 + 涌现能力</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ===== MoE Section ===== -->
+<div style="margin-top:60px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">MoE 稀疏专家架构</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">用路由器动态激活少量专家，以少量计算换取巨大参数量</p>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>DeepSeek-V3 (671B 参数, 37B 激活)、Mixtral 8x7B、GPT-4 (传闻) 都使用 MoE 架构。用 1/4 的计算成本达到稠密模型同等效果。
+</div>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:25px">
+<!-- Dense vs MoE comparison -->
+<div style="flex:1;min-width:280px;max-width:480px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#fff;margin-bottom:14px;font-size:1rem;text-align:center">Dense vs MoE</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+<div style="background:rgba(0,210,255,.06);border:1px solid rgba(0,210,255,.2);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#00d2ff;font-weight:600;margin-bottom:8px;text-align:center">Dense (稠密)</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6;text-align:center">
+每个 token 经过<br><strong style="color:#fff">所有参数</strong><br><br>
+<span style="color:#888">LLaMA 70B → 每个 token<br>使用 70B 参数计算</span>
+</div>
+</div>
+<div style="background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.2);border-radius:10px;padding:14px">
+<div style="font-size:.85rem;color:#00ff88;font-weight:600;margin-bottom:8px;text-align:center">MoE (稀疏)</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.6;text-align:center">
+每个 token 只经过<br><strong style="color:#fff">少量专家</strong><br><br>
+<span style="color:#888">Mixtral 8×7B → 每个 token<br>只用 2×7B = 14B 计算</span>
+</div>
+</div>
+</div>
+</div>
+
+<!-- MoE Architecture -->
+<div style="flex:1;min-width:280px;max-width:480px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:22px">
+<div style="font-weight:700;color:#fff;margin-bottom:14px;font-size:1rem;text-align:center">MoE 工作原理</div>
+<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:16px;text-align:center">
+<div style="font-size:.8rem;color:#ffa500;margin-bottom:8px">Router (门控网络)</div>
+<div style="font-size:.75rem;color:#888;margin-bottom:12px">对每个 token 计算各专家的权重分数</div>
+<div style="display:flex;justify-content:center;gap:8px;margin-bottom:12px">
+<div style="padding:6px 10px;border-radius:6px;font-size:.7rem;background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);color:#00ff88">专家1 ✓</div>
+<div style="padding:6px 10px;border-radius:6px;font-size:.7rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#666">专家2</div>
+<div style="padding:6px 10px;border-radius:6px;font-size:.7rem;background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);color:#00ff88">专家3 ✓</div>
+<div style="padding:6px 10px;border-radius:6px;font-size:.7rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#666">专家4</div>
+</div>
+<div style="font-size:.72rem;color:#888">Top-K 选择（通常 K=2）→ 加权求和输出</div>
+</div>
+<div style="margin-top:12px;font-size:.78rem;color:#aaa;line-height:1.6">
+<div>🎯 <span style="color:#ffa500">负载均衡</span>：辅助损失确保专家均匀使用</div>
+<div>🚀 <span style="color:#00ff88">优势</span>：参数量↑ 但计算量不变</div>
+<div>⚠️ <span style="color:#ff6b6b">挑战</span>：通信开销、内存占用大</div>
+</div>
+</div>
+</div>
+
+<!-- MoE Timeline -->
+<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:22px;margin-top:20px">
+<div style="font-weight:700;color:#fff;margin-bottom:14px;font-size:1rem;text-align:center">MoE 发展时间线</div>
+<div style="display:flex;flex-direction:column;gap:8px;font-size:.82rem">
+<div style="display:flex;align-items:center;gap:10px"><span style="color:#888;min-width:65px">2017</span> <span style="color:#00d2ff">Shazeer</span> <span style="color:#aaa">— 首次将 MoE 应用于 LSTM 语言模型</span></div>
+<div style="display:flex;align-items:center;gap:10px"><span style="color:#888;min-width:65px">2021</span> <span style="color:#ffa500">Switch Transformer</span> <span style="color:#aaa">— Google，1.6T 参数，Top-1 路由</span></div>
+<div style="display:flex;align-items:center;gap:10px"><span style="color:#888;min-width:65px">2023.12</span> <span style="color:#00ff88">Mixtral 8×7B</span> <span style="color:#aaa">— Mistral，开源 MoE，性能媲美 LLaMA-70B</span></div>
+<div style="display:flex;align-items:center;gap:10px"><span style="color:#888;min-width:65px">2024-25</span> <span style="color:#c864ff">DeepSeek-V3, GPT-4o, Gemini 2</span> <span style="color:#aaa">— 全面 MoE 化</span></div></div>
+</div>
+</div>
+
+</div>
+<!-- End MoE Section -->
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Transformer 论文《Attention Is All You Need》(2017) 是 AI 历史上引用最多的论文之一，已被引用超过 13 万次。从此，RNN/LSTM 退出历史舞台。
+</div>
+
+
+
+<div style="margin-top:30px;padding:20px;background:rgba(255,153,0,.05);border:1px solid rgba(255,153,0,.25);border-radius:14px">
+<div style="font-weight:700;color:#ff9900;margin-bottom:12px;font-size:1rem">☁️ AWS 服务映射</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.8">
+• Amazon Bedrock — 提供多种基于 Transformer 的基础模型 API（Claude, Nova, Llama, Mistral）<br>• Amazon SageMaker JumpStart — 一键部署开源 Transformer 模型<br>• AWS Inferentia2 — 专为 Transformer 推理优化的芯片，比 GPU 便宜 40%
+</div>
+</div>
+
+</div>
+
+<script>
+// Generate attention visualization grids (replaces document.write)
+document.addEventListener('DOMContentLoaded', function() {
+  // Helper: create grid cells
+  function fillGrid(id, count, colorFn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let html = '';
+    for (let i = 0; i < count; i++) {
+      html += colorFn(i, count);
+    }
+    el.innerHTML = html;
+  }
+
+  // Encoder bidirectional: 5x5, all cells visible
+  fillGrid('attn-grid-enc-bidir', 25, function() {
+    const v = (Math.random() * 0.6 + 0.2).toFixed(2);
+    return '<div style="height:16px;border-radius:2px;background:rgba(0,210,255,' + v + ')"></div>';
+  });
+
+  // Encoder-Decoder encoder part: 3x3, all visible
+  fillGrid('attn-grid-encdec-enc', 9, function() {
+    const v = (Math.random() * 0.6 + 0.2).toFixed(2);
+    return '<div style="height:14px;border-radius:2px;background:rgba(0,210,255,' + v + ')"></div>';
+  });
+
+  // Encoder-Decoder decoder part: 3x3, causal mask (lower triangle)
+  fillGrid('attn-grid-encdec-dec', 9, function(i) {
+    const r = Math.floor(i / 3), c = i % 3;
+    const v = c <= r ? (Math.random() * 0.6 + 0.2).toFixed(2) : '0';
+    return '<div style="height:14px;border-radius:2px;background:rgba(255,165,0,' + v + ')"></div>';
+  });
+
+  // Decoder-only causal: 5x5, causal mask (lower triangle)
+  fillGrid('attn-grid-dec-causal', 25, function(i) {
+    const r = Math.floor(i / 5), c = i % 5;
+    const v = c <= r ? (Math.random() * 0.6 + 0.3).toFixed(2) : '0';
+    return '<div style="height:16px;border-radius:2px;background:rgba(0,255,136,' + v + ')"></div>';
+  });
+});
+</script>
+<script>
+const stages=[
+// ===== Prefill 阶段 =====
+{n:1,phase:"prefill",title:"输入 Prompt (Input Text)",desc:"用户输入的整段提示词作为 Prefill 阶段的输入。这一阶段会一次性、并行地处理 prompt 里的所有 token。",
+ viz:()=>{const toks=["The","cat","sat","on","the","mat"];return toks.map((t,i)=>`<span class="tok tok-in" style="animation-delay:${i*.1}s">${t}</span>`).join('')}},
+{n:2,phase:"prefill",title:"分词 (Tokenization)",desc:"文本被分词器（如 BPE/WordPiece）切分为子词 token，每个 token 映射到词表中的唯一 ID。整个 prompt 一起送入模型。",
+ viz:()=>{const pairs=[["The","1024"],["cat","4521"],["sat","8832"],["on","102"],["the","1024"],["mat","9917"]];return pairs.map(([w,id],i)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><span class="tok tok-in">${w}</span><span style="color:rgba(255,255,255,.3)">↓</span><span class="tok tok-id">${id}</span></div>`).join('')}},
+{n:3,phase:"prefill",title:"词嵌入 + 位置编码",desc:"每个 token ID 查表得到高维向量（如 4096 维），再叠加位置编码（正弦 / RoPE / ALiBi）注入顺序信息。所有位置同时完成，因此 Prefill 是计算密集型（compute-bound）。",
+ viz:()=>{const toks=["The","cat","sat","on"];return toks.map((t,i)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s"><span class="tok tok-em" style="font-size:.75rem">emb(${t})</span><span style="color:rgba(255,255,255,.3)">+</span><span class="tok tok-pos">pos_${i}</span><span style="color:rgba(255,255,255,.3)">↓</span><span class="tok tok-out" style="font-size:.72rem">x_${i}</span></div>`).join('')}},
+{n:4,phase:"prefill",title:"并行多头注意力 (Full-Sequence Attention)",desc:"核心机制！prompt 中每个 token 通过 Q/K/V 投影，与所有位置计算相关性。Prefill 一次性算出整段序列的注意力（满三角矩阵），多个头并行关注不同关系。公式：Attention(Q,K,V) = softmax(QK^T/√d)V",
+ viz:()=>{const n=5;let h='<div class="attn-wrap">';for(let head=0;head<3;head++){h+=`<div class="attn-head"><div class="attn-lbl">Head ${head+1}</div><div class="attn-map" style="grid-template-columns:repeat(${n},1fr)">`;for(let i=0;i<n*n;i++){const r=Math.floor(i/n),c=i%n;const v=c<=r?(Math.random()*.8+.1).toFixed(2):'0';const colors=['0,210,255','200,100,255','0,255,136'];h+=`<div class="a-cell" style="background:rgba(${colors[head]},${v})"></div>`}h+='</div></div>'}h+='</div><div class="note">💡 因果掩码（下三角）：每个 token 只能看到自己及之前的 token，符合自回归生成的设定</div>';return h}},
+{n:5,phase:"prefill",title:"残差 + LayerNorm + FFN × N 层",desc:"Attention 输出经残差连接与 LayerNorm，再进入前馈网络（两层 MLP，扩展 ×4 后用 GELU/SwiGLU 激活）。这套 block 堆叠 N 层（LLaMA-70B = 80 层）。浅层学语法，深层学推理。",
+ viz:()=>{let h='<div class="ffn-wrap">';h+='<div class="ffn-col"><div class="ffn-dot" style="background:#00d2ff"></div><div class="ffn-dot" style="background:#00d2ff;animation-delay:.2s"></div><div class="ffn-dot" style="background:#00d2ff;animation-delay:.4s"></div><div class="ffn-lbl">d_model<br>4096</div></div>';h+='<div class="ffn-arr">→</div>';h+='<div class="ffn-col">';for(let i=0;i<6;i++)h+=`<div class="ffn-dot" style="background:#ffa500;animation-delay:${i*.1}s"></div>`;h+='<div class="ffn-lbl">d_ff<br>16384 (×4)</div></div>';h+='<div class="ffn-arr">→ GELU →</div>';h+='<div class="ffn-col"><div class="ffn-dot" style="background:#00ff88"></div><div class="ffn-dot" style="background:#00ff88;animation-delay:.2s"></div><div class="ffn-dot" style="background:#00ff88;animation-delay:.4s"></div><div class="ffn-lbl">d_model<br>4096</div></div>';h+='</div>';h+='<div class="note">💡 Pre-Norm + 残差让深层网络可训练；FFN 存储模型的「知识记忆」</div>';return h}},
+{n:6,phase:"prefill",title:"写入 KV Cache + 预测首个 token",desc:"Prefill 的收尾：把每层算出的 Key/Value 缓存起来（KV Cache），供后续 Decode 复用，避免重复计算整段 prompt。同时最后一个位置经 LM Head + softmax 得到第一个输出 token。",
+ viz:()=>{let h='<div style="width:100%;text-align:center">';h+='<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px">'+["The","cat","sat","on","the","mat"].map(t=>`<span class="tok tok-cache">KV(${t})</span>`).join('')+'</div>';h+='<div style="font-size:.72rem;color:#888;margin-bottom:14px">↑ 整段 prompt 的 Key/Value 已缓存（每层一份）</div>';const probs=[{w:"down",p:.46,c:"#00ff88"},{w:"there",p:.22,c:"#00d2ff"},{w:"quietly",p:.14,c:"#ffa500"},{w:"...",p:.18,c:"#888"}];h+='<div class="prob-wrap" style="margin:0 auto">';probs.forEach((p,i)=>{h+=`<div class="prob-item" style="animation-delay:${i*.15}s"><span class="prob-lbl">${p.w}</span><div class="prob-bg"><div class="prob-fill" style="width:${p.p*100}%;background:${p.c}"></div></div><span class="prob-val">${(p.p*100).toFixed(1)}%</span></div>`});h+='</div>';h+='<div class="note">⏱️ Prefill 越长（prompt 越大）首 token 延迟（TTFT）越高，但只发生一次</div></div>';setTimeout(()=>{document.querySelectorAll('.prob-fill').forEach(el=>{el.style.width=el.style.width})},100);return h}},
+
+// ===== Decode 阶段 =====
+{n:7,phase:"decode",title:"取上一个 token 作为输入",desc:"Decode 阶段开始自回归循环：把上一步生成的 token（如 “down”）作为新的、唯一的输入。每次只处理 1 个 token，所以 Decode 是访存密集型（memory-bound）。",
+ viz:()=>{let h='<div style="width:100%;text-align:center">';h+='<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;align-items:center">'+["The","cat","sat","on","the","mat"].map(t=>`<span class="tok tok-in" style="opacity:.4">${t}</span>`).join('')+'<span style="color:#888">→</span><span class="tok tok-out" style="font-size:.9rem">down</span></div>';h+='<div class="note">💡 已生成的 token 不必重算，它们的 K/V 已经在缓存里。只有新 token 需要前向计算</div></div>';return h}},
+{n:8,phase:"decode",title:"单 token 注意力（复用 KV Cache）",desc:"新 token 计算自己的 Q，与 KV Cache 里所有历史 Key/Value 做注意力。只新增一行计算，因此每步极快——但需要从显存反复读取庞大的 KV Cache，成为带宽瓶颈。",
+ viz:()=>{const n=7;let h='<div class="attn-wrap"><div class="attn-head"><div class="attn-lbl">新 token 的注意力（最后一行）</div><div class="attn-map" style="grid-template-columns:repeat('+n+',1fr)">';for(let i=0;i<n;i++){const fromCache=i<n-1;const v=(Math.random()*.7+.2).toFixed(2);h+=`<div class="a-cell" style="background:rgba(${fromCache?'255,200,0':'200,100,255'},${v});border:1px solid rgba(${fromCache?'255,200,0':'200,100,255'},.6)"></div>`}h+='</div><div style="font-size:.65rem;color:#888;margin-top:6px"><span style="color:#ffc800">■</span> 来自 KV Cache &nbsp; <span style="color:#c864ff">■</span> 当前新 token</div></div></div>';h+='<div class="note">⚡ FlashAttention / PagedAttention / 投机解码（Speculative Decoding）都在优化这一步的访存效率</div>';return h}},
+{n:9,phase:"decode",title:"预测下一个 token",desc:"新 token 的输出向量经 LM Head 投影到词表大小，softmax 得到概率分布，再按采样策略（Greedy / Top-K / Top-P / Temperature）选出下一个 token。",
+ viz:()=>{const probs=[{w:"there",p:.51,c:"#00ff88"},{w:"and",p:.21,c:"#00d2ff"},{w:"slowly",p:.13,c:"#ffa500"},{w:"...",p:.15,c:"#888"}];let h='<div class="prob-wrap">';probs.forEach((p,i)=>{h+=`<div class="prob-item" style="animation-delay:${i*.15}s"><span class="prob-lbl">${p.w}</span><div class="prob-bg"><div class="prob-fill" style="width:${p.p*100}%;background:${p.c}"></div></div><span class="prob-val">${(p.p*100).toFixed(1)}%</span></div>`});h+='</div><div class="note">💡 代码生成常用 T=0（Greedy 确定性），创意写作用 T=0.7~1.0</div>';setTimeout(()=>{document.querySelectorAll('.prob-fill').forEach(el=>{el.style.width=el.style.width})},100);return h}},
+{n:10,phase:"decode",title:"追加 KV Cache，自回归循环",desc:"把刚生成 token 的 K/V 追加进缓存，然后回到第 7 步，用它作为下一轮输入。如此逐字生成，直到产生 EOS（结束符）或达到长度上限。这就是你看到的「逐字蹦字」效果。",
+ viz:()=>{let h='<div style="width:100%;text-align:center">';h+='<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap;align-items:center;margin-bottom:14px">';["down","there","slowly","…","<EOS>"].forEach((t,i)=>{const isEos=t==="<EOS>";h+=`<span class="tok ${isEos?'tok-id':'tok-out'}" style="animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.25}s">${t}</span>`;if(i<4)h+='<span style="color:#888">→</span>'});h+='</div>';h+='<div style="display:flex;align-items:center;justify-content:center;gap:10px;font-size:.8rem;color:#c864ff"><span>生成 token</span><span>→</span><span class="tok tok-cache">追加 KV</span><span>→</span><span>回到步骤 7 ↻</span></div>';h+='<div class="note">⏱️ 总延迟 ≈ Prefill(一次) + N × 每 token Decode。输出越长，Decode 累计耗时越大</div></div>';return h}}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  let lastPhase='';
+  const phaseMeta={
+    prefill:{cls:'phase-prefill',name:'🟦 Prefill 预填充',sub:'并行处理整段 prompt · 计算密集 · 决定首 token 延迟 (TTFT)'},
+    decode:{cls:'phase-decode',name:'🟪 Decode 解码',sub:'逐 token 自回归生成 · 访存密集 · 复用 KV Cache'}
+  };
+  stages.forEach((s,i)=>{
+    if(s.phase!==lastPhase){
+      const m=phaseMeta[s.phase];
+      html+=`<div class="phase-divider ${m.cls}"><div class="line"></div><div class="pname">${m.name}</div><div class="line"></div></div><div style="text-align:center"><span class="phase-sub">${m.sub}</span></div>`;
+      lastPhase=s.phase;
+    }
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    const numCls=s.phase==='prefill'?'pf':'dc';
+    const tag=s.phase==='prefill'?'<span class="ptag pf">PREFILL</span>':'<span class="ptag dc">DECODE</span>';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num ${numCls}">${s.n}</div><div class="stage-title">${s.title}${tag}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="../../assets/common.css">
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/stepper.js"></script>
+<script>
+if (window.renderSATip) {
+  renderSATip('transformer.html', [
+    { step: 6, tip: 'SA关注：Prefill 决定首 token 延迟 (TTFT)，KV Cache 大小直接影响显存占用——长 prompt 场景要重点评估内存与成本' },
+    { step: 8, tip: 'SA关注：Decode 是访存密集型瓶颈，FlashAttention / PagedAttention / 投机解码可显著降低推理延迟与单 token 成本' }
+  ]);
+}
+</script>
+</body>
+</html>

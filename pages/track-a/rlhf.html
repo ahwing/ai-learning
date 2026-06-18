@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对齐：RLHF / DPO 完整流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a3a2a,#0f2922);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#00ff88,#00cc6a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#00ff88,#00cc6a);color:#000}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(0,255,136,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#00ff88;font-weight:bold}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1)}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(0,255,136,.4);box-shadow:0 0 25px rgba(0,255,136,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(0,255,136,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#00ff88,#00cc6a);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;color:#000;flex-shrink:0}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.tok{display:inline-flex;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;font-size:.85rem;animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tok-in{background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);color:#00d2ff}
+.tok-em{background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);color:#00ff88}
+.tok-warn{background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);color:#ff6b6b}
+.tok-out{background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);color:#c864ff}
+.note{background:rgba(0,255,136,.05);border-left:3px solid rgba(0,255,136,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>对齐：RLHF / DPO</h1>
+<p class="subtitle">从能力到安全 — 让模型输出符合人类偏好</p>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>ChatGPT 的"礼貌"和"安全"就来自 RLHF。OpenAI 雇佣了约 40 名标注员，通过对比排序让模型学会了什么是"好"的回答。这是从 GPT-3.5 到 ChatGPT 的核心技术跃迁。
+</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Meta 的 LLaMA 2 Chat 用 RLHF 训练了超过 5 轮迭代。每轮收集新的人类偏好数据，不断精调。而 LLaMA 3 则改用了 DPO，训练更稳定且无需单独的 RM。
+</div>
+
+
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">10</span></div>
+<div id="pipeline"></div>
+
+<!-- ===== RLHF vs DPO Comparison ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">RLHF vs DPO：两条对齐路线</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">目标相同（对齐人类偏好），方法不同</p>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:30px">
+<!-- RLHF -->
+<div style="flex:1;min-width:300px;max-width:480px;background:rgba(255,165,0,.05);border:1px solid rgba(255,165,0,.25);border-radius:14px;padding:22px">
+<div style="text-align:center;font-weight:700;font-size:1.1rem;color:#ffa500;margin-bottom:14px">RLHF (PPO)</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:14px">
+<div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:6px;padding:6px 16px;font-size:.8rem;color:#ffa500;width:80%;text-align:center">1. 训练 Reward Model</div>
+<div style="color:rgba(255,255,255,.3);font-size:.7rem">↓</div>
+<div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:6px;padding:6px 16px;font-size:.8rem;color:#ffa500;width:80%;text-align:center">2. PPO 强化学习优化</div>
+<div style="color:rgba(255,255,255,.3);font-size:.7rem">↓</div>
+<div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:6px;padding:6px 16px;font-size:.8rem;color:#ffa500;width:80%;text-align:center">3. KL 约束防止偏离</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 理论完善，效果验证充分</div>
+<div>✅ InstructGPT/ChatGPT 使用</div>
+<div>❌ 需要 4 个模型同时在内存</div>
+<div>❌ 训练不稳定，超参敏感</div>
+</div>
+</div>
+
+<!-- DPO -->
+<div style="flex:1;min-width:300px;max-width:480px;background:rgba(0,255,136,.05);border:2px solid rgba(0,255,136,.3);border-radius:14px;padding:22px;position:relative">
+<div style="position:absolute;top:-10px;right:15px;background:linear-gradient(135deg,#00ff88,#00cc6a);color:#000;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:10px">🔥 更流行</div>
+<div style="text-align:center;font-weight:700;font-size:1.1rem;color:#00ff88;margin-bottom:14px">DPO (Direct Preference Optimization)</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:14px">
+<div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:6px 16px;font-size:.8rem;color:#00ff88;width:80%;text-align:center">1. 收集偏好对 (chosen/rejected)</div>
+<div style="color:rgba(255,255,255,.3);font-size:.7rem">↓</div>
+<div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:6px 16px;font-size:.8rem;color:#00ff88;width:80%;text-align:center">2. 直接优化策略（无需 RM）</div>
+<div style="color:rgba(255,255,255,.3);font-size:.7rem">↓</div>
+<div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:6px 16px;font-size:.8rem;color:#00ff88;width:80%;text-align:center">3. 隐式 reward = log ratio</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.6">
+<div>✅ 无需单独的 Reward Model</div>
+<div>✅ 训练稳定，像 SFT 一样简单</div>
+<div>✅ LLaMA-3, Qwen-2 等使用</div>
+<div>⚠️ 离线数据，无法在线探索</div>
+</div>
+</div>
+</div>
+
+<!-- DPO Loss Formula -->
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:24px;margin-bottom:30px;text-align:center">
+<div style="font-weight:700;color:#fff;margin-bottom:12px;font-size:1rem">📐 DPO 核心公式</div>
+<div style="font-family:monospace;font-size:.85rem;color:#ddd;background:rgba(0,0,0,.3);padding:12px 16px;border-radius:8px;display:inline-block;margin-bottom:10px">
+L<sub>DPO</sub> = -log σ(β · [log π(y<sub>w</sub>|x)/π<sub>ref</sub>(y<sub>w</sub>|x) - log π(y<sub>l</sub>|x)/π<sub>ref</sub>(y<sub>l</sub>|x)])
+</div>
+<div style="font-size:.8rem;color:#888;line-height:1.6">
+y<sub>w</sub> = 偏好回答 (chosen) &nbsp;|&nbsp; y<sub>l</sub> = 拒绝回答 (rejected) &nbsp;|&nbsp; β = 温度参数<br>
+本质：增大 chosen 的概率，减小 rejected 的概率，同时不偏离 reference model 太远
+</div>
+</div>
+
+<!-- Variants -->
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:16px;font-size:1rem;text-align:center">🔄 DPO 变体与改进</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#00d2ff;font-size:.85rem;margin-bottom:6px">IPO</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">避免 DPO 的过拟合问题<br>使用平方 loss 替代 log-sigmoid</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#ffa500;font-size:.85rem;margin-bottom:6px">KTO</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">不需要成对数据<br>只需标记"好"或"坏"</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#00ff88;font-size:.85rem;margin-bottom:6px">ORPO</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">SFT + DPO 合并为一步<br>无需 reference model</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#ff64c8;font-size:.85rem;margin-bottom:6px">SimPO</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">用平均 log prob 作为 reward<br>更简单，效果更好</div>
+</div>
+</div>
+</div>
+</div>
+
+
+<!-- ===== 核心概念深入 ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">🧠 核心概念深入</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">费曼式解释 — 用类比理解本质</p>
+
+<!-- 什么是对齐 -->
+<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.2);border-radius:14px;padding:24px;margin-bottom:20px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:12px;font-size:1.05rem">🎯 "对齐"到底是什么？</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:14px">
+<strong style="color:#fff">类比：培训一个能力超强的新员工</strong><br><br>
+想象你招了一个天才员工（预训练模型）。他读过所有书、知道所有知识，但他不知道公司的价值观：什么该做、什么不该做、怎样的回答才是"好"的。<br><br>
+<span style="color:#00d2ff">SFT</span> = 给他看工作范例："这类问题这样回答"<br>
+<span style="color:#00ff88">对齐</span> = 教他判断力："在这两个回答中，A 比 B 好，因为..."<br><br>
+</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;font-size:.82rem;color:#aaa;line-height:1.7">
+<div style="color:#ffa500;font-weight:600;margin-bottom:6px">为什么 SFT 不够？</div>
+<div>• SFT 只教"做什么"，不教"为什么这样做更好"</div>
+<div>• 模型可能学到表面模式而非深层偏好</div>
+<div>• 面对新场景时，没有内化的"判断标准"来指导行为</div>
+<div style="margin-top:8px;color:#00ff88">对齐的本质：让模型内化一套评判标准，而非记忆固定答案</div>
+</div>
+</div>
+
+<!-- Bradley-Terry 模型 -->
+<div style="background:rgba(0,210,255,.04);border:1px solid rgba(0,210,255,.2);border-radius:14px;padding:24px;margin-bottom:20px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:12px;font-size:1.05rem">📊 Bradley-Terry 模型：把"谁更好"变成数学</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:14px">
+<strong style="color:#fff">类比：棋手等级分（Elo Rating）</strong><br><br>
+你看两个棋手下棋，A 赢了 B。你能说 A 比 B 强，但"强多少"？Elo 系统给每个棋手一个分数，分差越大，强者赢的概率越高。<br><br>
+Bradley-Terry 模型做的事完全一样：给每个回答一个"分数"（reward），然后：
+</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;text-align:center;margin-bottom:12px">
+<div style="font-family:monospace;font-size:.85rem;color:#ddd;margin-bottom:8px">P(A 优于 B) = σ(r(A) - r(B)) = 1 / (1 + e<sup>-(r(A)-r(B))</sup>)</div>
+<div style="font-size:.78rem;color:#888">σ = sigmoid 函数，把分差映射到 [0,1] 概率</div>
+</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.7">
+<div><span style="color:#00ff88">✓</span> 分差大 → 高概率认为 A 更好（确定性高）</div>
+<div><span style="color:#00ff88">✓</span> 分差小 → 接近 50/50（不确定）</div>
+<div><span style="color:#00ff88">✓</span> 只需要"谁比谁好"的相对判断，不需要绝对分数</div>
+<div style="margin-top:8px;color:#00d2ff">这就是为什么偏好数据只需要标注"A 比 B 好"，而不需要打具体分数</div>
+</div>
+</div>
+<!-- KL 散度约束 -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:24px;margin-bottom:20px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:12px;font-size:1.05rem">🐕 KL 散度约束：为什么需要"牵绳"？</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:14px">
+<strong style="color:#fff">类比：遛狗的牵绳</strong><br><br>
+把 SFT 模型想象成一条训练有素的狗（reference model），对齐训练就是让它学新技能。但你需要一根牵绳（KL 约束）：
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
+<div style="background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.25);border-radius:8px;padding:12px">
+<div style="color:#ff6b6b;font-weight:600;font-size:.82rem;margin-bottom:6px">🔗 绳太紧（β 太大）</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">模型几乎不能改变<br>学不到新的偏好<br>= 白训练了</div>
+</div>
+<div style="background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.25);border-radius:8px;padding:12px">
+<div style="color:#00ff88;font-weight:600;font-size:.82rem;margin-bottom:6px">✅ 绳刚好（β 适中）</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">模型能学习偏好<br>同时保持基础能力<br>= 理想状态</div>
+</div>
+<div style="background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.25);border-radius:8px;padding:12px">
+<div style="color:#ffa500;font-weight:600;font-size:.82rem;margin-bottom:6px">💨 绳太松（β 太小）</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">模型跑偏了<br>reward hacking<br>= 输出退化</div>
+</div>
+</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;font-size:.82rem;color:#aaa;line-height:1.6">
+<span style="color:#ffa500">实践经验：</span>β 通常在 0.1-0.5 之间。太小模型会找到 reward 的漏洞（说一堆废话但 reward 高），太大则模型不会改变行为。
+</div>
+</div>
+
+<!-- Reward Hacking -->
+<div style="background:rgba(255,107,107,.04);border:1px solid rgba(255,107,107,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:12px;font-size:1.05rem">🎭 Reward Hacking：模型学会"作弊"</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:14px">
+<strong style="color:#fff">类比：应试教育 vs 真正学习</strong><br><br>
+学生发现"写长一点分数就高"，于是疯狂凑字数而不关心内容质量。模型也会发现 reward model 的漏洞：
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#ff6b6b;font-size:.82rem;margin-bottom:6px">🔄 重复讨好</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">不断重复"希望这对您有帮助！"<br>RM 给高分但实际无用</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#ffa500;font-size:.82rem;margin-bottom:6px">📏 长度偏好</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">生成超长回答<br>因为 RM 倾向于给长回答高分</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#c864ff;font-size:.82rem;margin-bottom:6px">🎪 格式游戏</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">过度使用 markdown 格式<br>看起来"专业"但内容空洞</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#00d2ff;font-size:.82rem;margin-bottom:6px">🦜 鹦鹉学舌</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">重复用户的问题再回答<br>制造"理解深刻"的假象</div>
+</div>
+</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;font-size:.82rem;color:#aaa;line-height:1.6">
+<span style="color:#00ff88">防御手段：</span>KL 约束 + 更好的 RM + 多维度评估 + 定期更新 RM + 人工抽检
+</div>
+</div>
+</div>
+
+<!-- ===== 替代方案与优化 ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">⚡ 替代方案与优化</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">对齐方法全景图 — 从 RLHF 到无需偏好对的方法</p>
+
+<!-- 完整对比表 -->
+<div style="background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:24px;margin-bottom:20px;overflow-x:auto">
+<div style="font-weight:700;color:#fff;margin-bottom:16px;font-size:1rem;text-align:center">📋 对齐方法完整对比</div>
+<table style="width:100%;border-collapse:collapse;font-size:.78rem;min-width:700px">
+<thead>
+<tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+<th style="padding:10px 8px;text-align:left;color:#00ff88;font-weight:600">方法</th>
+<th style="padding:10px 8px;text-align:left;color:#00d2ff;font-weight:600">核心思路</th>
+<th style="padding:10px 8px;text-align:center;color:#ffa500;font-weight:600">需要 RM?</th>
+<th style="padding:10px 8px;text-align:center;color:#c864ff;font-weight:600">数据需求</th>
+<th style="padding:10px 8px;text-align:left;color:#00ff88;font-weight:600">优点</th>
+<th style="padding:10px 8px;text-align:left;color:#ff6b6b;font-weight:600">缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:8px;color:#ffa500;font-weight:600">RLHF (PPO)</td>
+<td style="padding:8px;color:#aaa">训练 RM → PPO 优化策略</td>
+<td style="padding:8px;text-align:center;color:#ff6b6b">✓ 需要</td>
+<td style="padding:8px;text-align:center;color:#aaa">偏好对</td>
+<td style="padding:8px;color:#aaa">理论完善，在线探索</td>
+<td style="padding:8px;color:#aaa">4 模型，不稳定</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:8px;color:#00ff88;font-weight:600">DPO</td>
+<td style="padding:8px;color:#aaa">直接从偏好对优化策略</td>
+<td style="padding:8px;text-align:center;color:#00ff88">✗ 不需要</td>
+<td style="padding:8px;text-align:center;color:#aaa">偏好对</td>
+<td style="padding:8px;color:#aaa">简单稳定，像 SFT</td>
+<td style="padding:8px;color:#aaa">离线，可能过拟合</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:8px;color:#00d2ff;font-weight:600">IPO</td>
+<td style="padding:8px;color:#aaa">平方 loss 替代 log-sigmoid</td>
+<td style="padding:8px;text-align:center;color:#00ff88">✗ 不需要</td>
+<td style="padding:8px;text-align:center;color:#aaa">偏好对</td>
+<td style="padding:8px;color:#aaa">避免 DPO 过拟合</td>
+<td style="padding:8px;color:#aaa">效果提升有限</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:8px;color:#c864ff;font-weight:600">KTO</td>
+<td style="padding:8px;color:#aaa">只需好/坏标签，无需配对</td>
+<td style="padding:8px;text-align:center;color:#00ff88">✗ 不需要</td>
+<td style="padding:8px;text-align:center;color:#00ff88">单条标注</td>
+<td style="padding:8px;color:#aaa">数据收集最简单</td>
+<td style="padding:8px;color:#aaa">信号弱于偏好对</td>
+</tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
+<td style="padding:8px;color:#ff64c8;font-weight:600">ORPO</td>
+<td style="padding:8px;color:#aaa">SFT + 偏好优化合为一步</td>
+<td style="padding:8px;text-align:center;color:#00ff88">✗ 不需要</td>
+<td style="padding:8px;text-align:center;color:#aaa">偏好对</td>
+<td style="padding:8px;color:#aaa">无需 ref model，一步到位</td>
+<td style="padding:8px;color:#aaa">较新，验证不充分</td>
+</tr>
+<tr>
+<td style="padding:8px;color:#64c8ff;font-weight:600">SimPO</td>
+<td style="padding:8px;color:#aaa">平均 log prob 作为隐式 reward</td>
+<td style="padding:8px;text-align:center;color:#00ff88">✗ 不需要</td>
+<td style="padding:8px;text-align:center;color:#aaa">偏好对</td>
+<td style="padding:8px;color:#aaa">更简单，无需 ref model</td>
+<td style="padding:8px;color:#aaa">长度偏差需处理</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Online vs Offline -->
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:20px">
+<div style="flex:1;min-width:280px;max-width:480px;background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.2);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:.95rem">🌐 在线偏好优化 (Online)</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.7">
+<div style="margin-bottom:8px">用<strong style="color:#fff">当前模型</strong>生成回答，实时收集偏好反馈</div>
+<div><span style="color:#00ff88">✓</span> 数据分布匹配当前策略</div>
+<div><span style="color:#00ff88">✓</span> 能持续改进，避免分布偏移</div>
+<div><span style="color:#ff6b6b">✗</span> 需要持续的人工/AI 标注</div>
+<div><span style="color:#ff6b6b">✗</span> 计算成本高（需要不断生成）</div>
+<div style="margin-top:8px;color:#00ff88;font-size:.78rem">代表：Online RLHF, Online DPO, OAIF</div>
+</div>
+</div>
+<div style="flex:1;min-width:280px;max-width:480px;background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.2);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:.95rem">📦 离线偏好优化 (Offline)</div>
+<div style="font-size:.82rem;color:#aaa;line-height:1.7">
+<div style="margin-bottom:8px">用<strong style="color:#fff">预先收集的</strong>固定数据集训练</div>
+<div><span style="color:#00ff88">✓</span> 简单，一次收集多次使用</div>
+<div><span style="color:#00ff88">✓</span> 训练成本低，可复现</div>
+<div><span style="color:#ff6b6b">✗</span> 数据可能过时（分布偏移）</div>
+<div><span style="color:#ff6b6b">✗</span> 无法探索新的回答空间</div>
+<div style="margin-top:8px;color:#ffa500;font-size:.78rem">代表：标准 DPO, IPO, KTO</div>
+</div>
+</div>
+</div>
+
+<!-- Constitutional AI -->
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.2);border-radius:14px;padding:24px;margin-bottom:20px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:12px;font-size:1.05rem">📜 Constitutional AI：让模型自我批评</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:14px">
+<strong style="color:#fff">核心思想：</strong>不依赖人类标注，而是给模型一套"宪法"（原则），让它自己判断回答好坏。
+</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:14px">
+<div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:8px 18px;font-size:.8rem;color:#c864ff;width:80%;text-align:center;max-width:400px">1. 模型生成回答</div>
+<div style="color:rgba(255,255,255,.3);font-size:.7rem">↓</div>
+<div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:8px 18px;font-size:.8rem;color:#c864ff;width:80%;text-align:center;max-width:400px">2. 模型根据"宪法"自我批评</div>
+<div style="color:rgba(255,255,255,.3);font-size:.7rem">↓</div>
+<div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:8px 18px;font-size:.8rem;color:#c864ff;width:80%;text-align:center;max-width:400px">3. 模型修改回答（自我改进）</div>
+<div style="color:rgba(255,255,255,.3);font-size:.7rem">↓</div>
+<div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:8px 18px;font-size:.8rem;color:#c864ff;width:80%;text-align:center;max-width:400px">4. 用改进前后的对比做 DPO/RLHF</div>
+</div>
+<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;font-size:.82rem;color:#aaa;line-height:1.6">
+<span style="color:#c864ff">优势：</span>大幅减少人工标注需求 | <span style="color:#ff6b6b">风险：</span>模型可能有系统性盲点，自我批评不够客观
+</div>
+</div>
+
+<!-- 迭代 DPO 和自我博弈 -->
+<div style="background:rgba(0,210,255,.04);border:1px solid rgba(0,210,255,.2);border-radius:14px;padding:24px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:12px;font-size:1.05rem">🔄 迭代 DPO 与自我博弈方法</div>
+<div style="font-size:.88rem;color:#bbb;line-height:1.8;margin-bottom:14px">
+<strong style="color:#fff">核心思想：</strong>模型和自己的旧版本"对弈"，不断进化（类似 AlphaGo 的自我博弈）。
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#00d2ff;font-size:.85rem;margin-bottom:6px">Iterative DPO</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">每轮用当前模型生成新回答<br>重新收集偏好 → 再训练<br>多轮迭代持续提升</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#00ff88;font-size:.85rem;margin-bottom:6px">SPIN (Self-Play)</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">当前模型 vs 上一轮模型<br>目标：区分人类写的和模型生成的<br>收敛时模型 ≈ 人类水平</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:8px;padding:14px">
+<div style="font-weight:600;color:#ffa500;font-size:.85rem;margin-bottom:6px">Self-Rewarding</div>
+<div style="font-size:.78rem;color:#aaa;line-height:1.5">模型同时当 generator 和 judge<br>自己给自己打分<br>LLM-as-a-Judge 的极致</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 常见问题 FAQ ===== -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<h2 style="text-align:center;font-size:1.6rem;margin-bottom:8px;color:#fff">❓ 常见问题</h2>
+<p style="text-align:center;color:#888;margin-bottom:25px;font-size:.9rem">对齐实践中最常被问到的问题</p>
+
+<!-- Q1 -->
+<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.15);border-radius:14px;padding:20px;margin-bottom:14px">
+<div style="font-weight:700;color:#00ff88;margin-bottom:10px;font-size:.95rem">Q1: 需要多少偏好数据？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<strong style="color:#fff">短答案：</strong>取决于任务复杂度，但通常比你想的少。<br><br>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:10px 0">
+<div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px;text-align:center">
+<div style="color:#00ff88;font-weight:600;font-size:.9rem">1K-5K</div>
+<div style="font-size:.72rem;color:#888">简单任务/微调</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px;text-align:center">
+<div style="color:#ffa500;font-weight:600;font-size:.9rem">10K-50K</div>
+<div style="font-size:.72rem;color:#888">通用对齐</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px;text-align:center">
+<div style="color:#c864ff;font-weight:600;font-size:.9rem">100K+</div>
+<div style="font-size:.72rem;color:#888">ChatGPT 级别</div>
+</div>
+</div>
+<span style="color:#00d2ff">关键洞察：</span>数据质量 > 数据数量。1000 条高质量、多样化的偏好对，胜过 10000 条噪声数据。优先确保标注一致性和场景覆盖度。
+</div>
+</div>
+
+<!-- Q2 -->
+<div style="background:rgba(0,210,255,.04);border:1px solid rgba(0,210,255,.15);border-radius:14px;padding:20px;margin-bottom:14px">
+<div style="font-weight:700;color:#00d2ff;margin-bottom:10px;font-size:.95rem">Q2: DPO 能完全替代 RLHF 吗？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<strong style="color:#fff">短答案：</strong>大多数场景可以，但不是所有。<br><br>
+<span style="color:#00ff88">DPO 更好的场景：</span>资源有限、需要快速迭代、数据量中等、追求训练稳定性<br>
+<span style="color:#ffa500">RLHF 更好的场景：</span>需要在线探索新回答空间、任务非常复杂且多样、有充足计算资源<br><br>
+<span style="color:#c864ff">趋势：</span>业界正在融合两者优势 — Online DPO（用 DPO 的简单性 + 在线数据生成）正成为主流选择。LLaMA-3、Qwen-2 等都采用了 DPO 或其变体。
+</div>
+</div>
+
+<!-- Q3 -->
+<div style="background:rgba(255,165,0,.04);border:1px solid rgba(255,165,0,.15);border-radius:14px;padding:20px;margin-bottom:14px">
+<div style="font-weight:700;color:#ffa500;margin-bottom:10px;font-size:.95rem">Q3: 如何处理标注者分歧？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<strong style="color:#fff">短答案：</strong>分歧是信号，不是噪声。<br><br>
+<strong style="color:#fff">处理策略：</strong><br>
+<span style="color:#00ff88">1.</span> 多人标注 + 多数投票（至少 3 人，取 2/3 一致的）<br>
+<span style="color:#00ff88">2.</span> 分歧大的样本单独分析 — 可能是主观偏好题，需要分场景处理<br>
+<span style="color:#00ff88">3.</span> 使用 soft label（如 60% 选 A，40% 选 B）而非硬标签<br>
+<span style="color:#00ff88">4.</span> 建立标注规范（annotation guideline），减少主观性<br><br>
+<span style="color:#ff6b6b">警告：</span>强行统一有分歧的标注会引入偏见。承认不确定性比假装确定更好。
+</div>
+</div>
+
+<!-- Q4 -->
+<div style="background:rgba(200,100,255,.04);border:1px solid rgba(200,100,255,.15);border-radius:14px;padding:20px;margin-bottom:14px">
+<div style="font-weight:700;color:#c864ff;margin-bottom:10px;font-size:.95rem">Q4: 什么是"对齐税"？如何最小化？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<strong style="color:#fff">对齐税 (Alignment Tax)：</strong>为了安全性而牺牲的能力。<br><br>
+<strong style="color:#fff">类比：</strong>给赛车装安全带和限速器 — 更安全了，但最高速度降低了。<br><br>
+<strong style="color:#fff">表现形式：</strong><br>
+• 过度拒绝（明明可以回答的问题也拒绝）<br>
+• 回答变得冗长啰嗦（加太多免责声明）<br>
+• 创造力下降（过于保守）<br><br>
+<span style="color:#00ff88">最小化策略：</span><br>
+<span style="color:#00d2ff">1.</span> 精细化安全边界 — 区分"真正有害"和"敏感但可回答"<br>
+<span style="color:#00d2ff">2.</span> 多目标优化 — 同时优化安全性和有用性<br>
+<span style="color:#00d2ff">3.</span> 分层对齐 — 先对齐有用性，再微调安全性<br>
+<span style="color:#00d2ff">4.</span> 持续评估 — 监控能力指标，发现退化及时修正
+</div>
+</div>
+
+<!-- Q5 -->
+<div style="background:rgba(255,107,107,.04);border:1px solid rgba(255,107,107,.15);border-radius:14px;padding:20px">
+<div style="font-weight:700;color:#ff6b6b;margin-bottom:10px;font-size:.95rem">Q5: 如何检测和防止 Reward Hacking？</div>
+<div style="font-size:.84rem;color:#aaa;line-height:1.8">
+<strong style="color:#fff">检测信号：</strong><br>
+• Reward 分数持续上升，但人工评估质量下降<br>
+• 输出长度异常增加或格式过度统一<br>
+• 模型开始产生重复性的"讨好"模式<br><br>
+<strong style="color:#fff">防御体系：</strong><br>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:10px 0">
+<div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px">
+<div style="color:#00ff88;font-weight:600;font-size:.78rem;margin-bottom:4px">KL 约束</div>
+<div style="font-size:.72rem;color:#888">限制模型偏离程度</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px">
+<div style="color:#00d2ff;font-weight:600;font-size:.78rem;margin-bottom:4px">多维 Reward</div>
+<div style="font-size:.72rem;color:#888">分别评估有用/安全/格式</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px">
+<div style="color:#ffa500;font-weight:600;font-size:.78rem;margin-bottom:4px">定期更新 RM</div>
+<div style="font-size:.72rem;color:#888">堵住已知漏洞</div>
+</div>
+<div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px">
+<div style="color:#c864ff;font-weight:600;font-size:.78rem;margin-bottom:4px">人工抽检</div>
+<div style="font-size:.72rem;color:#888">最终防线，发现新模式</div>
+</div>
+</div>
+<span style="color:#ff6b6b">核心原则：</span>永远不要只看 reward 分数。建立独立于训练 reward 的评估体系（如人工评估、独立 RM、自动化测试集）。
+</div>
+</div>
+</div>
+
+
+<div style="margin-top:30px;padding:20px;background:rgba(255,153,0,.05);border:1px solid rgba(255,153,0,.25);border-radius:14px">
+<div style="font-weight:700;color:#ff9900;margin-bottom:12px;font-size:1rem">☁️ AWS 服务映射</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.8">
+• Amazon Bedrock Model Evaluation — 支持人工评测工作流，可收集偏好数据<br>• Amazon SageMaker RLHF — 通过 SageMaker 实现完整 RLHF 训练流程<br>• AWS 模型安全：Bedrock Guardrails 是 RLHF 的补充——即使对齐后仍需要外部安全层
+</div>
+</div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="sft.html" style="text-decoration:none;padding:14px 24px;background:rgba(0,210,255,.08);border:1px solid rgba(0,210,255,.4);border-radius:10px;color:#00d2ff;font-size:.9rem">← 监督微调 (SFT)</a>
+<a href="rl-reasoning.html" style="text-decoration:none;padding:14px 24px;background:rgba(200,100,255,.08);border:1px solid rgba(200,100,255,.4);border-radius:10px;color:#c864ff;font-size:.9rem">推理强化 (RL) →</a>
+</div>
+</div>
+
+</div>
+<script>
+const stages=[
+{n:1,title:"起点：SFT 模型",desc:"从 SFT 阶段得到的模型开始。模型已能遵循指令，但可能给出有害回答、编造事实、或不符合人类偏好的输出。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap"><div style="background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);border-radius:8px;padding:12px 20px"><div style="font-size:.8rem;color:#888">输入</div><div style="font-size:1rem;color:#00d2ff;font-weight:600">SFT Model</div></div><div style="color:#888;font-size:1.2rem">→</div><div style="background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);border-radius:8px;padding:12px 20px"><div style="font-size:.8rem;color:#888">目标</div><div style="font-size:1rem;color:#00ff88;font-weight:600">Aligned Model</div></div></div><div class="note">SFT 模型问题：可能帮助做坏事、编造信息、回答质量不稳定</div></div>'},
+{n:2,title:"收集偏好数据 (Preference Data)",desc:"对同一个 prompt，让模型生成多个回答，由人类标注员选择哪个更好（chosen vs rejected）。这是对齐的核心数据。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:500px;margin:0 auto;text-align:left"><div style="font-size:.8rem;color:#888;margin-bottom:8px">Prompt: "如何提高学习效率？"</div><div style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;align-items:center;gap:8px"><span style="color:#00ff88;font-size:1.2rem">👍</span><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:8px;font-size:.78rem;color:#aaa;flex:1">回答 A：制定计划、番茄工作法、定期复习...（详细有用）</div></div><div style="display:flex;align-items:center;gap:8px"><span style="color:#ff6b6b;font-size:1.2rem">👎</span><div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:6px;padding:8px;font-size:.78rem;color:#aaa;flex:1">回答 B：多学习就好了。（敷衍无用）</div></div></div></div><div style="margin-top:10px;font-size:.78rem;color:#888">典型规模：50K-500K 偏好对</div></div>'},
+{n:3,title:"[RLHF] 训练奖励模型 (Reward Model)",desc:"用偏好数据训练一个 Reward Model（通常基于 SFT 模型初始化）。RM 学会给「好回答」打高分，「坏回答」打低分。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px">';
+  h+='<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center">';
+  h+='<div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:8px 14px;font-size:.8rem"><span style="color:#00ff88">Chosen</span><span style="color:#888"> → score: </span><span style="color:#00ff88;font-weight:600">4.2</span></div>';
+  h+='<div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:6px;padding:8px 14px;font-size:.8rem"><span style="color:#ff6b6b">Rejected</span><span style="color:#888"> → score: </span><span style="color:#ff6b6b;font-weight:600">1.8</span></div>';
+  h+='</div>';
+  h+='<div style="font-family:monospace;font-size:.8rem;color:#ddd;background:rgba(0,0,0,.3);padding:8px 14px;border-radius:6px;margin-top:6px">L<sub>RM</sub> = -log σ(r(x,y<sub>w</sub>) - r(x,y<sub>l</sub>))</div>';
+  h+='<div style="font-size:.78rem;color:#888;margin-top:6px">Bradley-Terry 模型：学习偏好排序</div>';
+  h+='</div></div>';return h}},
+{n:4,title:"[RLHF] PPO 强化学习优化",desc:"用 PPO 算法优化策略模型：生成回答 → RM 打分 → 计算优势函数 → 更新策略。同时用 KL 散度约束不偏离 SFT 模型太远。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:6px">';
+  const steps=["Policy 生成回答 y","Reward Model 打分 r(x,y)","计算 Advantage: A = r - baseline","PPO Clip 更新策略","KL(π || π_ref) 惩罚项"];
+  steps.forEach((s,i)=>{h+=`<div style="background:rgba(0,255,136,${.08+i*.02});border:1px solid rgba(0,255,136,${.2+i*.08});border-radius:6px;padding:6px 18px;font-size:.8rem;color:#00ff88;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s">${s}</div>`;if(i<steps.length-1)h+='<div style="color:rgba(255,255,255,.2);font-size:.7rem">↓</div>'});
+  h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">需要同时加载 4 个模型：Policy, Reference, Reward, Value</div></div>';return h}},
+{n:5,title:"[DPO] 直接偏好优化",desc:"DPO 跳过 Reward Model，直接用偏好对优化策略。核心洞察：最优策略可以用 reference model 的 log ratio 隐式表达 reward。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);border-radius:6px;padding:8px 14px;font-size:.8rem;color:#00ff88">y<sub>chosen</sub></div><div style="font-size:.8rem;color:#888">vs</div><div style="background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);border-radius:6px;padding:8px 14px;font-size:.8rem;color:#ff6b6b">y<sub>rejected</sub></div></div><div style="color:rgba(255,255,255,.3)">↓ 计算 log probability ratio ↓</div><div style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-family:monospace;font-size:.78rem;color:#ddd">reward = β · log[π(y|x) / π<sub>ref</sub>(y|x)]</div><div style="color:rgba(255,255,255,.3)">↓ 优化目标 ↓</div><div style="font-size:.8rem;color:#aaa">增大 chosen 的 log ratio，减小 rejected 的 log ratio</div></div><div class="note">只需 2 个模型（policy + reference），训练像 SFT 一样简单</div></div>'},
+{n:6,title:"偏好数据质量控制",desc:"数据质量决定对齐效果。需要确保标注一致性、覆盖多种场景（安全、有用、诚实）、处理标注者分歧。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;max-width:500px;margin:0 auto">';
+  const dims=[{k:"有用性",v:"Helpful",c:"#00d2ff"},{k:"安全性",v:"Harmless",c:"#00ff88"},{k:"诚实性",v:"Honest",c:"#ffa500"},{k:"格式",v:"Format",c:"#c864ff"},{k:"准确性",v:"Accurate",c:"#ff64c8"},{k:"简洁性",v:"Concise",c:"#64c8ff"}];
+  dims.forEach((d,i)=>{h+=`<div style="background:${d.c}15;border:1px solid ${d.c}40;border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="font-size:.7rem;color:#888">${d.v}</div><div style="font-size:.85rem;color:${d.c};font-weight:600">${d.k}</div></div>`});
+  h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">HHH 原则：Helpful, Harmless, Honest</div></div>';return h}},
+{n:7,title:"KL 散度约束 (KL Penalty)",desc:"防止模型为了获得高 reward 而产生退化输出（reward hacking）。通过 KL(π || π_ref) 惩罚项，确保优化后的模型不偏离 SFT 模型太远。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:10px"><div style="background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.4);border-radius:8px;padding:10px 16px"><div style="font-size:.7rem;color:#888">Reference (SFT)</div><div style="font-size:.85rem;color:#00d2ff">π<sub>ref</sub></div></div><div style="font-size:1.5rem;color:#ffa500">↔</div><div style="background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);border-radius:8px;padding:10px 16px"><div style="font-size:.7rem;color:#888">Policy (训练中)</div><div style="font-size:.85rem;color:#00ff88">π<sub>θ</sub></div></div></div><div style="font-family:monospace;font-size:.8rem;color:#ddd;background:rgba(0,0,0,.3);padding:8px 14px;border-radius:6px;display:inline-block">Objective = E[reward] - β · KL(π<sub>θ</sub> || π<sub>ref</sub>)</div><div style="margin-top:8px;font-size:.78rem;color:#888">β 太小 → reward hacking；β 太大 → 学不到新东西</div></div>'},
+{n:8,title:"迭代对齐 (Iterative Alignment)",desc:"现代实践中，对齐不是一次性的。通过多轮迭代（生成新数据 → 标注 → 训练）持续改进。在线 DPO/RLHF 效果优于离线。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">';
+  const cycle=["模型生成","人类/AI 评判","更新偏好数据","DPO/PPO 训练","更强的模型"];
+  cycle.forEach((s,i)=>{h+=`<div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:20px;padding:6px 12px;font-size:.78rem;color:#00ff88;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s">${s}</div>`;if(i<cycle.length-1)h+='<span style="color:rgba(255,255,255,.3)">→</span>'});
+  h+='</div><div style="margin-top:10px;font-size:.78rem;color:#888">Online DPO / RLHF：用当前模型生成数据，效果更好</div></div>';return h}},
+{n:9,title:"安全对齐 (Safety Alignment)",desc:"专门针对安全场景的对齐：拒绝有害请求、避免偏见、不泄露隐私。通常使用 red-teaming 数据和专门的安全 reward。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:8px;padding:12px;min-width:180px"><div style="color:#ff6b6b;font-weight:600;font-size:.85rem;margin-bottom:6px">🚫 拒绝有害请求</div><div style="font-size:.75rem;color:#aaa">"如何制造..."<br>→ "我不能帮助..."</div></div><div style="background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);border-radius:8px;padding:12px;min-width:180px"><div style="color:#00ff88;font-weight:600;font-size:.85rem;margin-bottom:6px">✅ 诚实承认不知</div><div style="font-size:.75rem;color:#aaa">"2025年GDP是？"<br>→ "我不确定最新数据..."</div></div><div style="background:rgba(0,210,255,.1);border:1px solid rgba(0,210,255,.3);border-radius:8px;padding:12px;min-width:180px"><div style="color:#00d2ff;font-weight:600;font-size:.85rem;margin-bottom:6px">⚖️ 避免偏见</div><div style="font-size:.75rem;color:#aaa">公平对待不同群体<br>不做歧视性判断</div></div></div></div>'},
+{n:10,title:"评估对齐效果",desc:"使用自动评测（RewardBench、MT-Bench）和人工评估验证对齐效果。检查安全性、有用性、诚实性的平衡。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:10px">';
+  const metrics=[{name:"RewardBench",val:"92%",c:"#00ff88"},{name:"Safety",val:"98%",c:"#00d2ff"},{name:"Helpfulness",val:"87%",c:"#ffa500"},{name:"Win Rate",val:"+15%",c:"#c864ff"}];
+  metrics.forEach((m,i)=>{h+=`<div style="background:${m.c}15;border:1px solid ${m.c}40;border-radius:8px;padding:10px 16px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.12}s"><div style="font-size:.7rem;color:#888">${m.name}</div><div style="font-size:1rem;color:${m.c};font-weight:600">${m.val}</div></div>`});
+  h+='</div><div class="note" style="max-width:500px;margin:0 auto">对齐税 (Alignment Tax)：安全性提升可能略微降低某些能力，需要平衡</div></div>';return h}}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  stages.forEach((s,i)=>{
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="../../assets/common.css">
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/stepper.js"></script>
+</body>
+</html>

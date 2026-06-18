@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM 评估 (Evaluation)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a2a1a,#0f290f);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#00d2ff,#00ff88);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#00d2ff,#00ff88);color:#000}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(0,210,255,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#00d2ff;font-weight:bold}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1)}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(0,210,255,.4);box-shadow:0 0 25px rgba(0,210,255,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(0,210,255,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#00d2ff,#00ff88);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0;color:#000}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.note{background:rgba(0,210,255,.05);border-left:3px solid rgba(0,210,255,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>LLM 评估 (Evaluation)</h1>
+<p class="subtitle">如何衡量模型和 Agent 的表现 — 从指标到评估体系</p>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Chatbot Arena (LMSYS) 采用人类盲评 ELO 排名，被认为是最可靠的 LLM 排行榜。目前 GPT-4o、Claude 3.5 Sonnet、Gemini 2 位于第一梯队，竞争激烈。
+</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Amazon Bedrock 提供了内置模型评估工具，可自动打分 RAG 质量、安全性和幻觉率。企业不应只看公开 benchmark——必须在自己的数据和场景上做评测。
+</div>
+
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">10</span></div>
+<div id="pipeline"></div>
+
+<div style="margin-top:30px;padding:20px;background:rgba(255,153,0,.05);border:1px solid rgba(255,153,0,.25);border-radius:14px">
+<div style="font-weight:700;color:#ff9900;margin-bottom:12px;font-size:1rem">☁️ AWS 服务映射</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.8">
+• Amazon Bedrock Model Evaluation — 支持自动评测（内置指标）+ 人工评测（团队标注）<br>• FMEval (开源) — AWS 开源的基础模型评测框架<br>• Amazon SageMaker Clarify — 模型偏差检测和可解释性分析
+</div>
+</div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="index.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:10px;color:#ccc;font-size:.9rem">📚 返回目录</a>
+<a href="prompt-engineering.html" style="text-decoration:none;padding:14px 24px;background:rgba(200,100,255,.08);border:1px solid rgba(200,100,255,.4);border-radius:10px;color:#c864ff;font-size:.9rem">← Prompt Engineering</a>
+<a href="mcp.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.4);border-radius:10px;color:#ffa500;font-size:.9rem">MCP →</a>
+</div>
+</div>
+</div>
+<script>
+const stages=[
+{n:1,title:"为什么需要评估？",desc:"LLM 输出具有不确定性，不能靠「感觉」判断好坏。系统化评估让你能：量化模型能力、对比不同方案、发现退化问题、指导优化方向。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap"><div style="background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);border-radius:8px;padding:12px 18px"><div style="font-size:.75rem;color:#888">没有 Eval</div><div style="font-size:.85rem;color:#ff6b6b">"感觉还行" 🤷</div></div><div style="color:#888;font-size:1.2rem">→</div><div style="background:rgba(0,229,160,.15);border:1px solid rgba(0,229,160,.4);border-radius:8px;padding:12px 18px"><div style="font-size:.75rem;color:#888">有 Eval</div><div style="font-size:.85rem;color:#00e5a0">准确率 92.3% ↑3.1%</div></div></div><div class="note">If you can\'t measure it, you can\'t improve it.</div></div>'},
+{n:2,title:"评估维度",desc:"LLM 评估不是单一指标，需要多维度衡量：正确性（答案对不对）、相关性（是否切题）、完整性（是否全面）、安全性（是否有害）、延迟/成本。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;max-width:550px;margin:0 auto">';const dims=[{k:"✅ 正确性",v:"答案是否准确",c:"#00e5a0"},{k:"🎯 相关性",v:"是否切题",c:"#00b8d4"},{k:"📋 完整性",v:"是否全面",c:"#c864ff"},{k:"🔒 安全性",v:"是否有害",c:"#ff6b6b"},{k:"⚡ 延迟",v:"响应速度",c:"#ffa500"},{k:"💰 成本",v:"Token 消耗",c:"#ffc800"}];dims.forEach((d,i)=>{h+=`<div style="background:${d.c}12;border:1px solid ${d.c}35;border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.08}s"><div style="font-size:.78rem;color:${d.c};font-weight:600">${d.k}</div><div style="font-size:.65rem;color:#888">${d.v}</div></div>`});h+='</div></div>';return h}},
+{n:3,title:"Benchmark 评测",desc:"标准化基准测试：MMLU（知识广度）、HumanEval（代码）、GSM8K（数学）、MT-Bench（对话）、HELM（综合）。用于模型间横向对比。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:500px;margin:0 auto"><table style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)"><th style="padding:6px;text-align:left;color:#888">Benchmark</th><th style="padding:6px;text-align:center;color:#00d2ff">测试内容</th><th style="padding:6px;text-align:center;color:#888">题量</th></tr></thead><tbody><tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;color:#aaa">MMLU</td><td style="padding:6px;text-align:center;color:#666">57个学科知识</td><td style="padding:6px;text-align:center;color:#666">14K</td></tr><tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;color:#aaa">HumanEval</td><td style="padding:6px;text-align:center;color:#666">代码生成</td><td style="padding:6px;text-align:center;color:#666">164</td></tr><tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;color:#aaa">GSM8K</td><td style="padding:6px;text-align:center;color:#666">数学推理</td><td style="padding:6px;text-align:center;color:#666">8.5K</td></tr><tr><td style="padding:6px;color:#aaa">MT-Bench</td><td style="padding:6px;text-align:center;color:#666">多轮对话</td><td style="padding:6px;text-align:center;color:#666">80</td></tr></tbody></table></div></div>'},
+{n:4,title:"LLM-as-Judge",desc:"用一个强模型（如 GPT-4）来评判另一个模型的输出质量。优点：可扩展、成本低于人工。缺点：评判模型自身有偏见。常用于开放式任务评估。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:8px;padding:10px 20px;font-size:.8rem;color:#c864ff">被评估模型输出</div><div style="color:rgba(255,255,255,.3)">↓</div><div style="background:rgba(0,210,255,.1);border:1px solid rgba(0,210,255,.3);border-radius:8px;padding:10px 20px;font-size:.8rem;color:#00d2ff">Judge 模型 (GPT-4) + 评分标准</div><div style="color:rgba(255,255,255,.3)">↓</div><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:8px;padding:10px 20px;font-size:.8rem;color:#00e5a0">评分: 8/10 + 理由说明</div></div><div class="note">需要精心设计评分 rubric，并校准 Judge 的偏见</div></div>'},
+{n:5,title:"人工评估",desc:"人工评估仍是金标准：A/B 对比、Likert 量表评分、偏好排序。适用于主观质量、安全性、用户体验等难以自动化的维度。成本高但不可替代。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:8px;padding:12px;min-width:140px"><div style="color:#00e5a0;font-weight:600;font-size:.8rem;margin-bottom:4px">A/B 对比</div><div style="font-size:.7rem;color:#aaa">两个输出选更好的</div></div><div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:8px;padding:12px;min-width:140px"><div style="color:#00b8d4;font-weight:600;font-size:.8rem;margin-bottom:4px">评分量表</div><div style="font-size:.7rem;color:#aaa">1-5 分打分</div></div><div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:8px;padding:12px;min-width:140px"><div style="color:#ffa500;font-weight:600;font-size:.8rem;margin-bottom:4px">红队测试</div><div style="font-size:.7rem;color:#aaa">尝试攻破安全边界</div></div></div></div>'},
+{n:6,title:"Agent 评估的特殊挑战",desc:"Agent 评估比单次 LLM 调用更复杂：需要评估多步决策质量、工具调用准确性、任务完成率、效率（步数/成本）、错误恢复能力。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;max-width:500px;margin:0 auto">';const metrics=[{k:"✅ 任务完成率",v:"最终是否成功",c:"#00e5a0"},{k:"🔧 工具准确率",v:"调用是否正确",c:"#00b8d4"},{k:"📊 效率",v:"步数 / Token 消耗",c:"#ffa500"},{k:"🔄 恢复能力",v:"遇错能否自纠",c:"#c864ff"}];metrics.forEach((m,i)=>{h+=`<div style="background:${m.c}12;border:1px solid ${m.c}35;border-radius:8px;padding:10px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="color:${m.c};font-weight:600;font-size:.78rem">${m.k}</div><div style="font-size:.65rem;color:#888;margin-top:3px">${m.v}</div></div>`});h+='</div></div>';return h}},
+{n:7,title:"评估数据集构建",desc:"好的评估需要好的数据集：覆盖边界情况、包含困难样本、有明确的正确答案或评分标准。数据集需要持续维护和更新。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:450px;margin:0 auto;text-align:left;font-size:.78rem;line-height:1.9;color:#aaa"><span style="color:#00d2ff;font-weight:600">eval_dataset = [</span><br>&nbsp;&nbsp;{<span style="color:#00e5a0">"input"</span>: "用户问题",<br>&nbsp;&nbsp;&nbsp;<span style="color:#ffa500">"expected"</span>: "期望输出/行为",<br>&nbsp;&nbsp;&nbsp;<span style="color:#c864ff">"tags"</span>: ["edge_case", "math"]},<br>&nbsp;&nbsp;...<br><span style="color:#00d2ff">]</span></div><div class="note">建议：从真实用户交互中持续收集失败案例加入 eval 集</div></div>'},
+{n:8,title:"自动化评估流水线",desc:"将评估集成到 CI/CD：每次模型/prompt 变更自动运行 eval，对比基线，防止退化。工具：Promptfoo、Braintrust、LangSmith、Arize。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap"><div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:20px;padding:8px 14px;font-size:.78rem;color:#c864ff">代码变更</div><span style="color:rgba(255,255,255,.2)">→</span><div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:20px;padding:8px 14px;font-size:.78rem;color:#00b8d4">CI 触发 Eval</div><span style="color:rgba(255,255,255,.2)">→</span><div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:20px;padding:8px 14px;font-size:.78rem;color:#ffa500">对比基线</div><span style="color:rgba(255,255,255,.2)">→</span><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:20px;padding:8px 14px;font-size:.78rem;color:#00e5a0">通过/阻断</div></div></div>'},
+{n:9,title:"线上评估与监控",desc:"部署后持续监控：用户满意度（thumbs up/down）、任务成功率、异常检测、漂移检测。线上数据反哺离线评估集，形成飞轮。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">';const items=[{k:"👍 用户反馈",v:"隐式/显式信号",c:"#00e5a0"},{k:"📈 成功率",v:"任务完成追踪",c:"#00b8d4"},{k:"🚨 异常检测",v:"输出质量突变",c:"#ff6b6b"},{k:"🔄 数据飞轮",v:"线上→离线→优化",c:"#ffa500"}];items.forEach((it,i)=>{h+=`<div style="background:${it.c}12;border:1px solid ${it.c}35;border-radius:8px;padding:10px;min-width:130px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="color:${it.c};font-weight:600;font-size:.78rem">${it.k}</div><div style="font-size:.65rem;color:#888;margin-top:3px">${it.v}</div></div>`});h+='</div></div>';return h}},
+{n:10,title:"评估工具生态",desc:"主流评估工具：Promptfoo（开源 CLI）、LangSmith（LangChain 生态）、Braintrust（企业级）、Arize（可观测性）、RAGAS（RAG 专用）。选择取决于场景和规模。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:500px;margin:0 auto"><table style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)"><th style="padding:6px;text-align:left;color:#888">工具</th><th style="padding:6px;text-align:center;color:#00d2ff">特点</th><th style="padding:6px;text-align:center;color:#888">适用</th></tr></thead><tbody><tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;color:#aaa">Promptfoo</td><td style="padding:6px;text-align:center;color:#666">开源 CLI，本地运行</td><td style="padding:6px;text-align:center;color:#666">Prompt 迭代</td></tr><tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;color:#aaa">LangSmith</td><td style="padding:6px;text-align:center;color:#666">Trace + Eval 一体</td><td style="padding:6px;text-align:center;color:#666">LangChain 项目</td></tr><tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;color:#aaa">Braintrust</td><td style="padding:6px;text-align:center;color:#666">企业级 + 协作</td><td style="padding:6px;text-align:center;color:#666">团队协作</td></tr><tr><td style="padding:6px;color:#aaa">RAGAS</td><td style="padding:6px;text-align:center;color:#666">RAG 专用指标</td><td style="padding:6px;text-align:center;color:#666">RAG 系统</td></tr></tbody></table></div></div>'}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  stages.forEach((s,i)=>{
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="../../assets/common.css">
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/stepper.js"></script>
+</body>
+</html>

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS AI/ML 服务全景图</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#2a1a0a,#29200f);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#ffa500,#ff6b35);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#ffa500,#ff6b35);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(255,165,0,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+.step-info{text-align:center;margin-bottom:15px;color:#aaa}
+.step-info span{color:#ffa500;font-weight:bold}
+.progress-bar{width:100%;height:5px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin-bottom:25px}
+.progress-bar div{height:100%;background:linear-gradient(90deg,#ffa500,#ff6b35);border-radius:4px;transition:width .5s cubic-bezier(.4,0,.2,1);box-shadow:0 0 8px rgba(255,165,0,.4)}
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px}
+.stage-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#ffa500,#ff6b35);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0;color:#fff}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px}
+.tok{display:inline-flex;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;font-size:.85rem;animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 5px rgba(255,165,0,.2)}50%{box-shadow:0 0 20px rgba(255,165,0,.5)}}
+@keyframes layerUp{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+.tok-in{background:rgba(0,229,160,.15);border:1px solid rgba(0,229,160,.4);color:#00e5a0}
+.tok-em{background:rgba(0,184,212,.15);border:1px solid rgba(0,184,212,.4);color:#00b8d4}
+.tok-out{background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);color:#c864ff}
+.tok-id{background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);color:#ffa500}
+.tok-warn{background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);color:#ff6b6b}
+.note{background:rgba(255,165,0,.05);border-left:3px solid rgba(255,165,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+/* Architecture layers */
+.arch-layer{border-radius:10px;padding:14px 18px;margin:8px 0;transition:all .6s cubic-bezier(.4,0,.2,1);opacity:0;transform:translateY(20px) scale(.95)}
+.arch-layer.show{opacity:1;transform:translateY(0) scale(1)}
+.layer-top{background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.35)}
+.layer-mid{background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.35)}
+.layer-bot{background:rgba(0,184,212,.08);border:1px solid rgba(0,184,212,.35)}
+/* Service cards */
+.svc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px}
+.svc-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px;text-align:center;transition:all .3s;animation:fadeUp .4s ease forwards;opacity:0}
+.svc-card:hover{border-color:rgba(255,165,0,.5);transform:translateY(-2px)}
+.svc-icon{font-size:1.4rem;margin-bottom:4px}
+.svc-name{font-size:.75rem;font-weight:600;color:#fff;margin-bottom:2px}
+.svc-info{font-size:.68rem;color:#888;line-height:1.4}
+/* Decision tree */
+.dt-node{background:rgba(255,165,0,.06);border:1px solid rgba(255,165,0,.3);border-radius:10px;padding:14px;margin:10px 0;cursor:pointer;transition:all .3s}
+.dt-node:hover{border-color:rgba(255,165,0,.6);background:rgba(255,165,0,.1)}
+.dt-node.active{border-color:#ffa500;box-shadow:0 0 15px rgba(255,165,0,.2)}
+.dt-question{font-weight:700;color:#ffa500;font-size:.9rem;margin-bottom:8px}
+.dt-options{display:none;flex-direction:column;gap:8px;margin-top:10px}
+.dt-node.active .dt-options{display:flex}
+.dt-opt{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 14px;font-size:.8rem;color:#ccc;transition:all .3s}
+.dt-opt:hover{border-color:rgba(0,229,160,.5);color:#00e5a0}
+.dt-opt .result{color:#ffa500;font-weight:600;margin-top:4px;font-size:.78rem}
+/* Integration flow */
+.flow-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0;animation:slideIn .5s ease forwards;opacity:0}
+.flow-box{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:6px 12px;font-size:.78rem;color:#ccc}
+.flow-arrow{color:rgba(255,165,0,.6);font-size:.9rem}
+/* Feynman */
+.feynman{margin-top:16px;padding:14px 18px;background:rgba(255,213,79,.06);border:1px solid rgba(255,213,79,.25);border-left:3px solid #ffd54f;border-radius:8px;font-size:.82rem;line-height:1.7;color:#e8d5a3}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>☁️ AWS AI/ML 服务全景图</h1>
+<p class="subtitle">从托管 AI 服务到自建基础设施 — 三层架构完整解读</p>
+<div class="controls">
+<button class="btn btn-s" id="btnPrev" onclick="prev()">← 上一步</button>
+<button class="btn btn-p" id="btnNext" onclick="next()">下一步 →</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+</div>
+<div class="step-info">步骤 <span id="stepText">1 / 8</span></div>
+<div class="progress-bar"><div id="progressBar"></div></div>
+<div id="content"></div>
+<div id="page-quiz"></div>
+</div>
+
+<link rel="stylesheet" href="../../assets/common.css">
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/stepper.js"></script>
+<script>
+const stages = [
+// ===== Step 1: 全景鸟瞰 =====
+{
+  title: '全景鸟瞰 — 三层架构概览',
+  desc: 'AWS AI/ML 服务分为三层：顶层是 <strong>AI Services</strong>（即开即用的托管 API）；中层是 <strong>ML Platform</strong>（Bedrock + SageMaker 平台级能力）；底层是 <strong>Infrastructure</strong>（GPU/加速器实例 + 数据湖）。这三层递进关系：越往上越简单、越往下越灵活。',
+  viz: () => {
+    setTimeout(() => {
+      document.querySelectorAll('.arch-layer').forEach((el, i) => {
+        setTimeout(() => el.classList.add('show'), i * 600);
+      });
+    }, 100);
+    return `<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:0">
+      <div class="arch-layer layer-top" style="width:90%;text-align:center">
+        <div style="font-weight:700;color:#00e5a0;font-size:.9rem">🎯 AI Services（即开即用）</div>
+        <div style="font-size:.75rem;color:#888;margin-top:4px">Rekognition · Textract · Comprehend · Polly · Translate · Lex · Transcribe</div>
+      </div>
+      <div style="color:rgba(255,255,255,.2);font-size:.7rem;text-align:center">▲ 调用 ▲</div>
+      <div class="arch-layer layer-mid" style="width:95%;text-align:center">
+        <div style="font-weight:700;color:#ffa500;font-size:.9rem">⚙️ ML Platform（平台能力）</div>
+        <div style="font-size:.75rem;color:#888;margin-top:4px">Amazon Bedrock（FM 即服务）· Amazon SageMaker（训练/推理/MLOps）</div>
+      </div>
+      <div style="color:rgba(255,255,255,.2);font-size:.7rem;text-align:center">▲ 构建于 ▲</div>
+      <div class="arch-layer layer-bot" style="width:100%;text-align:center">
+        <div style="font-weight:700;color:#00b8d4;font-size:.9rem">🖥️ Infrastructure（基础设施）</div>
+        <div style="font-size:.75rem;color:#888;margin-top:4px">P5/P4d（NVIDIA GPU）· Trn2/Inf2（AWS 自研芯片）· EFA 网络 · S3 数据湖</div>
+      </div>
+    </div>
+    <div class="note">💡 <strong>选择原则：</strong>能用 AI Services 解决就别写代码；需要定制就用 Bedrock/SageMaker；极致性能才下沉到 Infrastructure。</div>`;
+  }
+},
+// ===== Step 2: AI Services 层 =====
+{
+  title: 'AI Services 层 — 开箱即用的智能 API',
+  desc: 'AI Services 是预训练好的模型封装为 API，<strong>无需 ML 经验</strong>即可使用。按调用量计费，毫秒级响应。涵盖视觉、语言、语音三大类，可直接集成到应用中。',
+  viz: () => {
+    const services = [
+      {icon:'👁️',name:'Rekognition',info:'图像/视频分析、人脸检测、内容审核'},
+      {icon:'📄',name:'Textract',info:'文档 OCR、表格/表单结构化提取'},
+      {icon:'🧠',name:'Comprehend',info:'NLP：情感分析、实体识别、主题建模'},
+      {icon:'🌐',name:'Translate',info:'75+ 语言实时翻译，支持自定义术语'},
+      {icon:'🗣️',name:'Polly',info:'文本转语音，多语言、多音色、SSML'},
+      {icon:'🤖',name:'Lex',info:'对话式 AI，构建聊天机器人/IVR'},
+      {icon:'🎙️',name:'Transcribe',info:'语音转文字，支持实时/批量、多说话人'}
+    ];
+    let cards = services.map((s,i) => `<div class="svc-card" style="animation-delay:${i*0.1}s"><div class="svc-icon">${s.icon}</div><div class="svc-name">${s.name}</div><div class="svc-info">${s.info}</div></div>`).join('');
+    return `<div class="svc-grid">${cards}</div>
+    <div class="note" style="margin-top:14px">🎯 <strong>SA 要点：</strong>客户问"我想做 X"→ 先看 AI Services 有没有现成的，比自己训练模型快 10 倍、省 90% 成本。</div>`;
+  }
+},
+// ===== Step 3: Bedrock 生态 =====
+{
+  title: 'Bedrock 生态 — 模型即服务平台',
+  desc: 'Amazon Bedrock 提供多家顶级 FM（Foundation Model）的统一 API 访问。<strong>无需管理基础设施</strong>，按 token 计费。支持模型选择、RAG、Agent、Guardrails 等企业级功能。',
+  viz: () => {
+    const models = [
+      {name:'Claude (Anthropic)',color:'#c864ff',desc:'推理深、代码强、安全'},
+      {name:'Nova (Amazon)',color:'#ffa500',desc:'性价比高、多模态'},
+      {name:'Llama (Meta)',color:'#00b8d4',desc:'开源可微调'},
+      {name:'Mistral',color:'#00e5a0',desc:'欧洲合规、多语言'}
+    ];
+    let modelCards = models.map((m,i) => `<div style="background:rgba(255,255,255,.04);border:1px solid ${m.color}40;border-radius:8px;padding:10px;text-align:center;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*0.15}s"><div style="font-size:.82rem;font-weight:600;color:${m.color}">${m.name}</div><div style="font-size:.72rem;color:#888;margin-top:4px">${m.desc}</div></div>`).join('');
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">${modelCards}</div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <div class="tok tok-id" style="animation-delay:.6s">API 模式: InvokeModel / Converse</div>
+      <div class="tok tok-in" style="animation-delay:.7s">On-Demand 按量付费</div>
+      <div class="tok tok-em" style="animation-delay:.8s">Provisioned 预留吞吐</div>
+      <div class="tok tok-out" style="animation-delay:.9s">Batch 离线批量</div>
+    </div>
+    <div class="note" style="margin-top:12px">💡 <strong>核心优势：</strong>同一 API 切换不同模型（Converse API），内置 RAG（Knowledge Bases）、Agent、Guardrails，快速从原型到生产。</div>`;
+  }
+},
+// ===== Step 4: SageMaker 平台 =====
+{
+  title: 'SageMaker 平台 — 全托管 ML 工作台',
+  desc: 'Amazon SageMaker 是端到端 ML 平台，覆盖<strong>数据准备 → 训练 → 调优 → 部署 → 监控</strong>全流程。适合需要自定义模型训练或完全控制推理部署的场景。',
+  viz: () => {
+    const components = [
+      {icon:'🎨',name:'Studio',desc:'统一 IDE，Notebook + 可视化实验'},
+      {icon:'🏋️',name:'Training',desc:'分布式训练，自动集群管理'},
+      {icon:'🚀',name:'Inference',desc:'实时/批量/Serverless 端点'},
+      {icon:'🔄',name:'Pipelines',desc:'ML CI/CD，自动化工作流'},
+      {icon:'📦',name:'Feature Store',desc:'特征存储，训练/推理复用'},
+      {icon:'📊',name:'Model Monitor',desc:'模型漂移检测，数据质量告警'}
+    ];
+    let html = components.map((c,i) => `<div class="svc-card" style="animation-delay:${i*0.12}s"><div class="svc-icon">${c.icon}</div><div class="svc-name">${c.name}</div><div class="svc-info">${c.desc}</div></div>`).join('');
+    return `<div class="svc-grid">${html}</div>
+    <div class="note" style="margin-top:14px">⚖️ <strong>Bedrock vs SageMaker：</strong>Bedrock = "用模型"（无需训练），SageMaker = "造模型"（完全控制）。两者互补，可组合使用。</div>`;
+  }
+},
+// ===== Step 5: 基础设施层 =====
+{
+  title: '基础设施层 — GPU/加速器 + 数据湖',
+  desc: '当 Bedrock/SageMaker 的抽象不够时，直接使用底层计算。AWS 提供多种加速器实例族，EFA 高速互联网络，以及 S3 数据湖支撑大规模训练数据。',
+  viz: () => {
+    const instances = [
+      {name:'P5/P5e',chip:'H100/H200',use:'大模型训练',color:'#ff6b6b'},
+      {name:'P4d',chip:'A100',use:'通用训练/推理',color:'#ffa500'},
+      {name:'G5/G6',chip:'A10G/L4',use:'推理 + 图形',color:'#00b8d4'},
+      {name:'Trn2',chip:'Trainium2',use:'训练（AWS 自研）',color:'#00e5a0'},
+      {name:'Inf2',chip:'Inferentia2',use:'推理（AWS 自研）',color:'#c864ff'}
+    ];
+    let rows = instances.map((inst,i) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,.03);border-radius:6px;animation:slideIn .4s ease forwards;opacity:0;animation-delay:${i*0.12}s">
+      <div style="width:60px;font-weight:600;font-size:.8rem;color:${inst.color}">${inst.name}</div>
+      <div style="width:90px;font-size:.75rem;color:#888">${inst.chip}</div>
+      <div style="flex:1;font-size:.75rem;color:#aaa">${inst.use}</div>
+    </div>`).join('');
+    return `<div style="display:flex;flex-direction:column;gap:6px">${rows}</div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <div class="tok tok-em" style="animation-delay:.6s">EFA 400Gbps 网络</div>
+      <div class="tok tok-in" style="animation-delay:.7s">S3 数据湖（EB 级）</div>
+      <div class="tok tok-id" style="animation-delay:.8s">FSx for Lustre 高速存储</div>
+    </div>
+    <div class="note" style="margin-top:12px">💰 <strong>成本提示：</strong>Trainium2 比同等 GPU 训练省 ~50%，Inferentia2 推理省 ~40%。AWS 自研芯片是性价比利器。</div>`;
+  }
+},
+// ===== Step 6: 选型决策树 =====
+{
+  title: '选型决策树 — 我该用哪个服务？',
+  desc: '点击每个决策节点，展开推荐路径。核心原则：<strong>能用高层就别下沉</strong>，从 AI Services 开始评估，逐步下探。',
+  viz: () => {
+    return `<div style="width:100%">
+      <div class="dt-node" onclick="this.classList.toggle('active')">
+        <div class="dt-question">❓ 你的需求是通用场景吗？（图像识别/OCR/翻译/语音）</div>
+        <div class="dt-options">
+          <div class="dt-opt">✅ 是 → 直接用 <strong>AI Services</strong>（Rekognition/Textract/Translate...）<div class="result">→ 零 ML 经验，按调用计费，分钟级集成</div></div>
+          <div class="dt-opt">❌ 不是，需要生成式 AI / 对话 / 自定义逻辑<div class="result">→ 继续往下 ↓</div></div>
+        </div>
+      </div>
+      <div class="dt-node" onclick="this.classList.toggle('active')">
+        <div class="dt-question">❓ 需要自己训练模型吗？</div>
+        <div class="dt-options">
+          <div class="dt-opt">❌ 不需要，用现有 FM 就行 → <strong>Amazon Bedrock</strong><div class="result">→ 选模型 + Prompt Engineering + RAG/Agent</div></div>
+          <div class="dt-opt">✅ 需要微调或从头训练 → 再问：数据量多大？<div class="result">→ 少量微调用 Bedrock Fine-tuning；大规模训练用 SageMaker</div></div>
+        </div>
+      </div>
+      <div class="dt-node" onclick="this.classList.toggle('active')">
+        <div class="dt-question">❓ 需要完全控制推理部署吗？（自定义容器/特殊硬件）</div>
+        <div class="dt-options">
+          <div class="dt-opt">❌ 不需要 → <strong>Bedrock / SageMaker Endpoint</strong><div class="result">→ 托管部署，自动扩缩</div></div>
+          <div class="dt-opt">✅ 需要 → <strong>EC2 + 加速器实例</strong>（P5/Trn2/Inf2）<div class="result">→ 完全控制，搭配 EFA + FSx，适合超大规模</div></div>
+        </div>
+      </div>
+    </div>`;
+  }
+},
+// ===== Step 7: 集成模式 =====
+{
+  title: '集成模式 — 生产架构实践',
+  desc: '在生产环境中，AWS AI 服务通常通过 Serverless 模式组合使用。三大经典集成模式：Lambda + Bedrock 同步调用、Step Functions 编排多步 AI 流水线、EventBridge 事件驱动异步处理。',
+  viz: () => {
+    return `<div style="width:100%;display:flex;flex-direction:column;gap:14px">
+      <div style="padding:12px;background:rgba(255,165,0,.06);border:1px solid rgba(255,165,0,.3);border-radius:8px">
+        <div style="font-weight:600;font-size:.85rem;color:#ffa500;margin-bottom:8px">模式 1：Lambda + Bedrock（同步调用）</div>
+        <div class="flow-row" style="animation-delay:.1s">
+          <div class="flow-box" style="border-color:rgba(0,229,160,.4);color:#00e5a0">API Gateway</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(255,165,0,.4);color:#ffa500">Lambda</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(200,100,255,.4);color:#c864ff">Bedrock InvokeModel</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box">Response</div>
+        </div>
+      </div>
+      <div style="padding:12px;background:rgba(0,184,212,.06);border:1px solid rgba(0,184,212,.3);border-radius:8px">
+        <div style="font-weight:600;font-size:.85rem;color:#00b8d4;margin-bottom:8px">模式 2：Step Functions 编排（多步 AI Pipeline）</div>
+        <div class="flow-row" style="animation-delay:.3s">
+          <div class="flow-box" style="border-color:rgba(0,184,212,.4);color:#00b8d4">Textract</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(200,100,255,.4);color:#c864ff">Bedrock 摘要</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(0,229,160,.4);color:#00e5a0">Comprehend 分类</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(255,165,0,.4);color:#ffa500">DynamoDB</div>
+        </div>
+      </div>
+      <div style="padding:12px;background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.3);border-radius:8px">
+        <div style="font-weight:600;font-size:.85rem;color:#00e5a0;margin-bottom:8px">模式 3：EventBridge 事件驱动（异步处理）</div>
+        <div class="flow-row" style="animation-delay:.5s">
+          <div class="flow-box" style="border-color:rgba(0,229,160,.4);color:#00e5a0">S3 上传事件</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(255,200,0,.4);color:#ffc800">EventBridge</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(255,165,0,.4);color:#ffa500">Lambda + Rekognition</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box" style="border-color:rgba(200,100,255,.4);color:#c864ff">SNS 通知</div>
+        </div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:12px">🏗️ <strong>架构选择：</strong>同步交互用模式1；复杂多步用模式2（带重试/并行）；事件触发用模式3（解耦 + 异步）。</div>`;
+  }
+},
+// ===== Step 8: 费曼总结 =====
+{
+  title: '费曼总结 — "AI 工厂"类比',
+  desc: '用一个"工厂"类比来总结三层关系，让整个架构一目了然。',
+  viz: () => {
+    return `<div style="width:100%">
+      <div class="feynman">
+        <div style="font-weight:700;color:#ffd54f;margin-bottom:10px;font-size:.95rem">🏭 把 AWS AI/ML 想象成一座「智能工厂」：</div>
+        <div style="margin-bottom:10px">
+          <strong style="color:#00e5a0">一楼大厅（AI Services）</strong>= 自动售货机<br>
+          投币（API 调用）就能拿到成品（识别结果、翻译文本、语音合成）。你不需要知道机器怎么造的，直接用。
+        </div>
+        <div style="margin-bottom:10px">
+          <strong style="color:#ffa500">二楼车间（Bedrock + SageMaker）</strong>= 定制工坊<br>
+          Bedrock 像"选择哪位大师帮你做"（选模型 + 给需求），SageMaker 像"自己当师傅"（亲手训练 + 上产线）。
+        </div>
+        <div style="margin-bottom:10px">
+          <strong style="color:#00b8d4">地下层（Infrastructure）</strong>= 发电厂 + 原材料仓库<br>
+          GPU 集群是发电机组（算力），S3 是原材料仓库（数据），EFA 是工厂内部高速传送带（网络）。
+        </div>
+        <div style="border-top:1px solid rgba(255,213,79,.2);padding-top:10px;margin-top:10px;color:#e8d5a3">
+          <strong>选择逻辑：</strong>先逛一楼（够用就走）→ 不够再上二楼定制 → 极端需求才下地下室自己搭。<br>
+          <strong>SA 价值：</strong>帮客户找到"最高楼层"的解决方案——越高越省钱、越快上线。
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+        <div class="tok tok-in" style="animation-delay:.2s">简单 → AI Services</div>
+        <div class="tok tok-id" style="animation-delay:.4s">定制 → Bedrock/SM</div>
+        <div class="tok tok-em" style="animation-delay:.6s">极致 → Infrastructure</div>
+      </div>
+    </div>`;
+  }
+}
+];
+
+const quizData = [
+  {
+    type: 'choice',
+    question: '客户想从上传的 PDF 发票中自动提取金额和日期，应该推荐哪个服务？',
+    options: ['Amazon Rekognition', 'Amazon Textract', 'Amazon Bedrock', 'Amazon SageMaker'],
+    answer: 1,
+    explanation: 'Textract 专门用于文档 OCR 和结构化数据提取（表格、表单字段），是提取发票信息的最佳选择。Rekognition 用于图像/视频分析（人脸、物体），不适合文档结构化提取。Bedrock/SageMaker 杀鸡用牛刀。'
+  },
+  {
+    type: 'choice',
+    question: '一个初创公司想快速构建智能客服聊天机器人，有企业知识库需要引用，但没有 ML 团队。最佳方案是？',
+    options: [
+      '用 SageMaker 训练自定义模型',
+      '用 EC2 + GPU 自建推理服务',
+      '用 Bedrock + Knowledge Bases + Agent',
+      '用 Amazon Lex 构建规则型机器人'
+    ],
+    answer: 2,
+    explanation: 'Bedrock + Knowledge Bases（RAG）+ Agent 是最适合的方案：无需 ML 经验、无需管理基础设施，通过 RAG 连接企业知识库，Agent 可以执行动作。SageMaker 需要 ML 团队；EC2 自建太重；Lex 是规则型，不擅长复杂对话和知识检索。'
+  },
+  {
+    type: 'choice',
+    question: '关于 AWS AI/ML 三层架构，以下哪个说法是正确的？',
+    options: [
+      'Bedrock 只能使用 Amazon 自研模型（Titan/Nova）',
+      'SageMaker 只能用于训练，不能用于部署推理',
+      'Trainium/Inferentia 是 AWS 自研芯片，比 NVIDIA GPU 有更好的性价比',
+      'AI Services 需要自己准备训练数据才能使用'
+    ],
+    answer: 2,
+    explanation: 'Trainium2（训练）和 Inferentia2（推理）是 AWS 自研芯片，针对 ML 工作负载优化，训练省 ~50%、推理省 ~40%。Bedrock 支持 Anthropic/Meta/Mistral 等多家模型；SageMaker 覆盖训练+推理+MLOps 全流程；AI Services 是预训练模型 API，无需自己准备训练数据。'
+  }
+];
+
+initStepper(stages, { pageId: 'b1-aws-ai-services', enableQuiz: true, quizData: quizData });
+</script>
+
+<div class="related-topics">
+  <h4>📎 相关专题</h4>
+  <a href="b2-architecture-patterns.html" class="related-topic-link">🏗️ AI Workload 架构模式</a>
+  <a href="b3-cost-optimization.html" class="related-topic-link">💰 成本优化与选型</a>
+  <a href="bedrock-overview.html" class="related-topic-link">☁️ Amazon Bedrock 全景</a>
+</div>
+</body>
+</html>

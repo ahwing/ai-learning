@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 编排框架对比</title>
+<link rel="stylesheet" href="../../assets/common.css">
+<style>
+:root{--track-color:#c864ff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a0f29,#0f1a29);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.2rem;margin-bottom:8px;background:linear-gradient(90deg,#c864ff,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px;font-size:.95rem}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#c864ff,#a855f7);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(200,100,255,.4)}
+.btn-s{background:rgba(255,255,255,.08);color:#ccc;border:1px solid rgba(255,255,255,.15)}
+.btn-s:hover{background:rgba(255,255,255,.15)}
+.progress-row{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:30px}
+#stepText{color:#c864ff;font-weight:bold;font-size:.9rem}
+.progress-track{flex:0 0 200px;height:5px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+#progressBar{height:100%;background:#c864ff;border-radius:4px;transition:width .5s cubic-bezier(.4,0,.2,1);box-shadow:0 0 8px rgba(200,100,255,.4)}
+#content{min-height:300px}
+.stage{background:rgba(255,255,255,.03);border:1px solid rgba(200,100,255,.2);border-radius:14px;padding:25px;animation:fadeIn .4s ease}
+.stage-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.stage-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#c864ff,#a855f7);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;color:#fff;flex-shrink:0}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.9rem;margin-bottom:14px}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;min-height:80px}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-15px)}to{opacity:1;transform:translateX(0)}}
+.tl-item{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-left:3px solid;margin-left:12px;padding-left:16px;animation:slideIn .4s ease both}
+.tl-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex-shrink:0;position:relative;left:-22px}
+.arch-box{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px;margin:6px 0}
+.arch-label{font-size:.72rem;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.arch-flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem}
+.arch-node{padding:6px 12px;border-radius:6px;font-weight:500;font-size:.75rem}
+.arch-arrow{color:#555;font-size:.9rem}
+.compare-table{width:100%;border-collapse:collapse;font-size:.78rem}
+.compare-table th{padding:10px 8px;text-align:left;color:#888;font-weight:500;border-bottom:1px solid rgba(255,255,255,.1);font-size:.72rem;text-transform:uppercase}
+.compare-table td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.05);color:#bbb;vertical-align:top}
+.compare-table tr:hover td{background:rgba(200,100,255,.03)}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68rem;font-weight:500;margin:2px}
+.tag-purple{background:rgba(200,100,255,.12);border:1px solid rgba(200,100,255,.3);color:#c864ff}
+.tag-blue{background:rgba(0,184,212,.12);border:1px solid rgba(0,184,212,.3);color:#00b8d4}
+.tag-orange{background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.3);color:#ffa500}
+.tag-green{background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.3);color:#00e5a0}
+.tag-red{background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.3);color:#ff6b6b}
+.radar-wrap{display:flex;justify-content:center;margin-top:16px}
+.nav-links{margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1);display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.nav-links a{text-decoration:none;padding:14px 24px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:10px;color:#ccc;font-size:.9rem;transition:all .3s}
+.nav-links a:hover{color:#c864ff;border-color:rgba(200,100,255,.4);background:rgba(200,100,255,.05)}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🔧 Agent 编排框架对比</h1>
+<p class="subtitle">2024-2025 主流 Agent 编排框架的能力全景与选型指南</p>
+<div class="controls">
+<button class="btn btn-s" id="btnPrev" onclick="prev()">← 上一步</button>
+<button class="btn btn-p" id="btnNext" onclick="next()">下一步 →</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+</div>
+<div class="progress-row">
+<span id="stepText">1 / 7</span>
+<div class="progress-track"><div id="progressBar" style="width:14.28%"></div></div>
+</div>
+<div id="content"></div>
+
+<div class="nav-links">
+<a href="index.html">📚 返回目录</a>
+<a href="c1-multi-agent.html" style="border-color:rgba(200,100,255,.3);color:#c864ff">← C1 Multi-Agent</a>
+<a href="c3-agent-evaluation.html" style="border-color:rgba(200,100,255,.3);color:#c864ff">C3 评估 →</a>
+</div>
+</div>
+
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/stepper.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script>
+// === Quiz Data ===
+const quizData = [
+  {
+    type:'choice',
+    question:'LangGraph 的核心抽象是什么？',
+    options:['Pipeline 管道','State Graph 状态图','Actor 模型','Workflow Engine'],
+    answer:1,
+    explanation:'LangGraph 以有向图（State Graph）为核心抽象，节点是处理步骤，边可以是条件分支。通过 Checkpoint 机制持久化状态，支持 Human-in-the-loop 中断恢复。'
+  },
+  {
+    type:'choice',
+    question:'CrewAI 中，负责定义"做什么"的概念是？',
+    options:['Agent','Task','Crew','Process'],
+    answer:1,
+    explanation:'在 CrewAI 中，Agent 定义"谁来做"（角色/背景/目标），Task 定义"做什么"（描述/期望输出），Crew 负责编排 Agent+Task 的协作流程。'
+  },
+  {
+    type:'choice',
+    question:'以下哪个框架采用"模型驱动循环"（model-driven loop）而非预定义工作流？',
+    options:['LangGraph','CrewAI','Strands Agents','AutoGen'],
+    answer:2,
+    explanation:'Strands Agents 采用模型驱动循环——不预定义编排逻辑，而是让模型自主决定下一步调用哪个工具，循环直到任务完成。这与 LangGraph 的"图预定义"方式形成对比。'
+  }
+];
+
+// === 7 Steps ===
+const stages = [
+  // Step 1: 框架全景时间线
+  {
+    title:'框架全景 — 2024-2025 主流框架时间线',
+    desc:'Agent 编排框架在 2023-2025 年经历了爆发式增长。从最早的 LangChain Agent 到专业化的编排框架，生态快速分化：有的专注图状态机、有的专注角色扮演、有的深度集成云服务。',
+    viz:()=>{
+      const timeline=[
+        {date:'2023.10',name:'AutoGen',color:'#00b8d4',desc:'微软开源，对话式多 Agent'},
+        {date:'2023.12',name:'CrewAI',color:'#ffa500',desc:'角色扮演式多 Agent 协作'},
+        {date:'2024.01',name:'LangGraph',color:'#00e5a0',desc:'LangChain 推出图状态机'},
+        {date:'2024.05',name:'Bedrock Agents GA',color:'#ff9900',desc:'AWS 托管 Agent 正式发布'},
+        {date:'2024.09',name:'AG2 (AutoGen 2.0)',color:'#00b8d4',desc:'AutoGen 架构重构'},
+        {date:'2024.11',name:'OpenAI Swarm',color:'#ff6b6b',desc:'实验性轻量多 Agent 框架'},
+        {date:'2025.02',name:'Strands Agents',color:'#c864ff',desc:'AWS 开源，模型驱动循环'},
+        {date:'2025.05',name:'生态融合期',color:'#888',desc:'MCP + A2A 协议标准化'}
+      ];
+      let h='<div style="width:100%">';
+      timeline.forEach((t,i)=>{
+        h+=`<div class="tl-item" style="border-color:${t.color};animation-delay:${i*0.08}s">
+          <div style="display:flex;align-items:baseline;gap:10px;min-width:100%">
+            <div class="tl-dot" style="background:${t.color};box-shadow:0 0 8px ${t.color}60"></div>
+            <div style="min-width:70px;font-size:.72rem;color:${t.color};font-weight:600">${t.date}</div>
+            <div style="font-size:.82rem;color:#eee;font-weight:600">${t.name}</div>
+            <div style="font-size:.75rem;color:#888;margin-left:auto">${t.desc}</div>
+          </div>
+        </div>`;
+      });
+      h+='<div style="margin-top:14px;padding:10px;background:rgba(200,100,255,.05);border-left:3px solid rgba(200,100,255,.4);border-radius:0 8px 8px 0;font-size:.78rem;color:#aaa">📈 趋势：从"大一统框架"走向"专业化分工" + "协议标准化"（MCP/A2A）</div>';
+      h+='</div>';
+      return h;
+    }
+  },
+  // Step 2: LangGraph
+  {
+    title:'LangGraph — 图状态机编排',
+    desc:'LangGraph 是 LangChain 推出的 Agent 编排框架，核心抽象是有向图（StateGraph）。每个节点是一个处理步骤，边可以是条件分支。内置 Checkpoint 持久化和 Human-in-the-loop 支持。',
+    viz:()=>{
+      let h='<div style="width:100%">';
+      // Architecture diagram
+      h+=`<div style="margin-bottom:14px">
+        <div class="arch-label">核心架构</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <div class="arch-node" style="background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.3);color:#00e5a0">StateGraph</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node" style="background:rgba(0,184,212,.12);border:1px solid rgba(0,184,212,.3);color:#00b8d4">Node (函数)</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node" style="background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.3);color:#ffa500">Edge (条件)</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node" style="background:rgba(200,100,255,.12);border:1px solid rgba(200,100,255,.3);color:#c864ff">Checkpoint</div>
+        </div>
+      </div>`;
+      // Key features
+      h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+        <div class="arch-box">
+          <div style="color:#00e5a0;font-weight:600;font-size:.8rem;margin-bottom:4px">🔄 状态持久化</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">Checkpoint 自动保存每步状态<br>支持 Redis/PostgreSQL/SQLite<br>可从任意步恢复执行</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#00b8d4;font-weight:600;font-size:.8rem;margin-bottom:4px">🧑‍💻 Human-in-the-loop</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">interrupt_before/after 节点中断<br>人工审核后继续或修改<br>适合高风险操作审批</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#ffa500;font-weight:600;font-size:.8rem;margin-bottom:4px">🌿 条件分支</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">add_conditional_edges<br>根据状态动态路由<br>支持循环和子图</div>
+        </div>
+      </div>`;
+      // Code snippet
+      h+=`<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-family:monospace;font-size:.7rem;color:#aaa;line-height:1.7">
+<span style="color:#00b8d4">from</span> langgraph.graph <span style="color:#00b8d4">import</span> StateGraph<br>
+graph = StateGraph(AgentState)<br>
+graph.<span style="color:#00e5a0">add_node</span>(<span style="color:#ffa500">"plan"</span>, plan_step)<br>
+graph.<span style="color:#00e5a0">add_node</span>(<span style="color:#ffa500">"execute"</span>, execute_step)<br>
+graph.<span style="color:#00e5a0">add_conditional_edges</span>(<span style="color:#ffa500">"execute"</span>, should_continue)<br>
+app = graph.<span style="color:#c864ff">compile</span>(checkpointer=MemorySaver())
+      </div>`;
+      h+=`<div style="margin-top:10px;font-size:.72rem;color:#888">💡 适合：需要精确控制流程、复杂条件路由、长时间运行的 Agent 任务</div>`;
+      h+='</div>';
+      return h;
+    }
+  },
+  // Step 3: CrewAI
+  {
+    title:'CrewAI — 角色扮演式协作',
+    desc:'CrewAI 用"角色扮演"隐喻组织多 Agent 协作。核心概念：Agent（角色）、Task（任务）、Crew（团队）、Process（流程）。强调声明式定义，降低编排复杂度。',
+    viz:()=>{
+      let h='<div style="width:100%">';
+      // Architecture
+      h+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <div class="arch-node" style="background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.3);color:#ffa500">🎭 Agent<br><span style="font-size:.6rem;color:#888">角色/目标/背景</span></div>
+        <div class="arch-arrow">+</div>
+        <div class="arch-node" style="background:rgba(0,184,212,.12);border:1px solid rgba(0,184,212,.3);color:#00b8d4">📋 Task<br><span style="font-size:.6rem;color:#888">描述/期望输出</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node" style="background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.3);color:#00e5a0">🚀 Crew<br><span style="font-size:.6rem;color:#888">编排执行</span></div>
+        <div class="arch-arrow">via</div>
+        <div class="arch-node" style="background:rgba(200,100,255,.12);border:1px solid rgba(200,100,255,.3);color:#c864ff">⚙️ Process<br><span style="font-size:.6rem;color:#888">sequential/hierarchical</span></div>
+      </div>`;
+      // Features grid
+      h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+        <div class="arch-box">
+          <div style="color:#ffa500;font-weight:600;font-size:.8rem;margin-bottom:4px">🎭 角色系统</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">role + goal + backstory<br>每个 Agent 有明确人设<br>LLM 按角色行事</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#00b8d4;font-weight:600;font-size:.8rem;margin-bottom:4px">📋 Task 委派</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">description + expected_output<br>支持 context 传递<br>支持 callback 钩子</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#00e5a0;font-weight:600;font-size:.8rem;margin-bottom:4px">🔄 流程模式</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">Sequential: 顺序执行<br>Hierarchical: Manager 分配<br>Consensual: 讨论达成共识</div>
+        </div>
+      </div>`;
+      // Code
+      h+=`<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-family:monospace;font-size:.7rem;color:#aaa;line-height:1.7">
+researcher = <span style="color:#ffa500">Agent</span>(role=<span style="color:#c864ff">"研究员"</span>, goal=<span style="color:#c864ff">"深度调研"</span>, tools=[search])<br>
+writer = <span style="color:#ffa500">Agent</span>(role=<span style="color:#c864ff">"作者"</span>, goal=<span style="color:#c864ff">"撰写报告"</span>)<br>
+task = <span style="color:#00b8d4">Task</span>(description=<span style="color:#c864ff">"分析市场趋势"</span>, agent=researcher)<br>
+crew = <span style="color:#00e5a0">Crew</span>(agents=[researcher, writer], tasks=[task], process=<span style="color:#c864ff">Process.sequential</span>)
+      </div>`;
+      h+=`<div style="margin-top:10px;font-size:.72rem;color:#888">💡 适合：快速搭建多角色协作、内容创作流水线、团队分工模拟</div>`;
+      h+='</div>';
+      return h;
+    }
+  },
+  // Step 4: AutoGen / AG2
+  {
+    title:'AutoGen / AG2 — 对话式多 Agent 协作',
+    desc:'微软 AutoGen（现更名 AG2）以"对话"为核心编排原语。Agent 之间通过消息传递协作，支持 GroupChat 多人讨论、内置代码执行沙箱、灵活的终止条件控制。',
+    viz:()=>{
+      let h='<div style="width:100%">';
+      h+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <div class="arch-node" style="background:rgba(0,184,212,.12);border:1px solid rgba(0,184,212,.3);color:#00b8d4">ConversableAgent</div>
+        <div class="arch-arrow">↔</div>
+        <div class="arch-node" style="background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.3);color:#00e5a0">AssistantAgent</div>
+        <div class="arch-arrow">↔</div>
+        <div class="arch-node" style="background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.3);color:#ffa500">UserProxyAgent</div>
+      </div>`;
+      h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+        <div class="arch-box">
+          <div style="color:#00b8d4;font-weight:600;font-size:.8rem;margin-bottom:4px">💬 对话原语</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">Agent 间通过消息交互<br>支持 1:1 和 GroupChat<br>自然语言即编排</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#00e5a0;font-weight:600;font-size:.8rem;margin-bottom:4px">👥 GroupChat</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">多 Agent 轮流发言<br>Speaker Selection 策略<br>round_robin/auto/manual</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#ffa500;font-weight:600;font-size:.8rem;margin-bottom:4px">💻 代码执行</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">内置 Docker 沙箱<br>本地代码执行器<br>自动修复运行错误</div>
+        </div>
+      </div>`;
+      h+=`<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-family:monospace;font-size:.7rem;color:#aaa;line-height:1.7">
+assistant = <span style="color:#00e5a0">AssistantAgent</span>(<span style="color:#c864ff">"coder"</span>, llm_config=config)<br>
+executor = <span style="color:#ffa500">UserProxyAgent</span>(<span style="color:#c864ff">"executor"</span>, code_execution_config={<span style="color:#c864ff">"executor"</span>: docker})<br>
+<span style="color:#888"># 对话式驱动 — 一句话启动协作</span><br>
+executor.<span style="color:#00b8d4">initiate_chat</span>(assistant, message=<span style="color:#c864ff">"写一个数据分析脚本"</span>)
+      </div>`;
+      h+=`<div style="margin-top:10px;font-size:.72rem;color:#888">💡 适合：研究原型、代码生成与调试、需要人机协同的对话式工作流</div>`;
+      h+='</div>';
+      return h;
+    }
+  },
+  // Step 5: Bedrock Agents
+  {
+    title:'Bedrock Agents — AWS 托管 Agent Runtime',
+    desc:'Amazon Bedrock Agents 是全托管的 Agent 服务。通过 Action Group 定义工具、Knowledge Base 接入知识库、Guardrails 控制安全边界。无需管理基础设施，按调用计费。',
+    viz:()=>{
+      let h='<div style="width:100%">';
+      h+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <div class="arch-node" style="background:rgba(255,153,0,.12);border:1px solid rgba(255,153,0,.3);color:#ff9900">Bedrock Agent</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node" style="background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.3);color:#00e5a0">Action Group<br><span style="font-size:.6rem;color:#888">Lambda / API Schema</span></div>
+        <div class="arch-arrow">+</div>
+        <div class="arch-node" style="background:rgba(0,184,212,.12);border:1px solid rgba(0,184,212,.3);color:#00b8d4">Knowledge Base<br><span style="font-size:.6rem;color:#888">OpenSearch / Pinecone</span></div>
+        <div class="arch-arrow">+</div>
+        <div class="arch-node" style="background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.3);color:#ff6b6b">Guardrails<br><span style="font-size:.6rem;color:#888">安全防护</span></div>
+      </div>`;
+      h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+        <div class="arch-box">
+          <div style="color:#ff9900;font-weight:600;font-size:.8rem;margin-bottom:4px">⚡ Action Group</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">Lambda 函数即工具<br>OpenAPI Schema 定义<br>Return of Control 人工审批</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#00b8d4;font-weight:600;font-size:.8rem;margin-bottom:4px">📚 Knowledge Base</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">S3 文档自动分块索引<br>OpenSearch / Aurora 向量存储<br>RAG 自动集成</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#00e5a0;font-weight:600;font-size:.8rem;margin-bottom:4px">☁️ 全托管</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">无需管理服务器<br>自动扩缩容<br>按调用计费、IAM 权限控制</div>
+        </div>
+      </div>`;
+      h+=`<div style="background:rgba(255,153,0,.05);border-left:3px solid rgba(255,153,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;font-size:.75rem;color:#aaa;line-height:1.6">
+<span style="color:#ff9900;font-weight:600">AWS 生态集成：</span>CloudWatch 监控 · CloudTrail 审计 · IAM 细粒度权限 · VPC 网络隔离 · 多 Agent 协作（Supervisor Mode）
+      </div>`;
+      h+=`<div style="margin-top:10px;font-size:.72rem;color:#888">💡 适合：企业级生产部署、需要安全合规的场景、已有 AWS 技术栈的团队</div>`;
+      h+='</div>';
+      return h;
+    }
+  },
+  // Step 6: Strands Agents
+  {
+    title:'Strands Agents + Amazon Q — 模型驱动循环',
+    desc:'Strands Agents（2025 年 AWS 开源）采用极简设计：模型驱动循环（model-driven loop）+ 工具原生。不预定义图或流程，让模型自主决定下一步，SDK 仅提供循环骨架和工具注册。Amazon Q 系列产品（Developer/Business）基于类似理念构建。',
+    viz:()=>{
+      let h='<div style="width:100%">';
+      // Core loop diagram
+      h+=`<div style="margin-bottom:14px">
+        <div class="arch-label">模型驱动循环（核心理念）</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;background:rgba(200,100,255,.05);border:1px solid rgba(200,100,255,.2);border-radius:8px">
+          <div class="arch-node" style="background:rgba(200,100,255,.15);border:1px solid rgba(200,100,255,.4);color:#c864ff">User Prompt</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node" style="background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.3);color:#00e5a0">Model 推理</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node" style="background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.3);color:#ffa500">Tool Call?</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node" style="background:rgba(0,184,212,.12);border:1px solid rgba(0,184,212,.3);color:#00b8d4">执行工具</div>
+          <div class="arch-arrow">↩</div>
+          <div style="font-size:.7rem;color:#888">循环直到 done</div>
+        </div>
+      </div>`;
+      h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+        <div class="arch-box">
+          <div style="color:#c864ff;font-weight:600;font-size:.8rem;margin-bottom:4px">🎯 极简 SDK</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">Agent = Model + Tools<br>无需定义图/流程<br>模型即编排器</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#00e5a0;font-weight:600;font-size:.8rem;margin-bottom:4px">🔧 工具原生</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">@tool 装饰器定义<br>20+ 内置 AWS 工具<br>支持 MCP Server 工具</div>
+        </div>
+        <div class="arch-box">
+          <div style="color:#ffa500;font-weight:600;font-size:.8rem;margin-bottom:4px">☁️ AWS 生态</div>
+          <div style="font-size:.72rem;color:#aaa;line-height:1.5">Amazon Q Developer 底层引擎<br>Bedrock 模型即插即用<br>支持部署到 Lambda/ECS</div>
+        </div>
+      </div>`;
+      h+=`<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-family:monospace;font-size:.7rem;color:#aaa;line-height:1.7">
+<span style="color:#00b8d4">from</span> strands <span style="color:#00b8d4">import</span> Agent<br>
+<span style="color:#00b8d4">from</span> strands.tools <span style="color:#00b8d4">import</span> tool<br><br>
+<span style="color:#ffa500">@tool</span><br>
+<span style="color:#00b8d4">def</span> <span style="color:#00e5a0">search</span>(query: str) -> str:<br>
+&nbsp;&nbsp;<span style="color:#888">"""搜索知识库"""</span><br>
+&nbsp;&nbsp;<span style="color:#ff6b6b">return</span> do_search(query)<br><br>
+agent = <span style="color:#c864ff">Agent</span>(model=<span style="color:#c864ff">"bedrock/claude-sonnet"</span>, tools=[search])<br>
+result = agent(<span style="color:#c864ff">"帮我分析竞品动态"</span>)
+      </div>`;
+      h+=`<div style="margin-top:10px;font-size:.72rem;color:#888">💡 适合：快速原型、AWS 云原生应用、需要灵活工具组合的场景</div>`;
+      h+='</div>';
+      return h;
+    }
+  },
+  // Step 7: 选型决策矩阵
+  {
+    title:'选型决策矩阵 — 场景 × 框架推荐',
+    desc:'没有"最好"的框架，只有"最适合"的框架。根据你的场景（复杂度、生态、部署要求）选择合适的工具。',
+    viz:()=>{
+      let h='<div style="width:100%">';
+      // Comparison table
+      h+=`<div style="overflow-x:auto;margin-bottom:20px">
+<table class="compare-table">
+<thead><tr>
+  <th>维度</th>
+  <th style="color:#00e5a0">LangGraph</th>
+  <th style="color:#ffa500">CrewAI</th>
+  <th style="color:#00b8d4">AutoGen/AG2</th>
+  <th style="color:#ff9900">Bedrock Agents</th>
+  <th style="color:#c864ff">Strands</th>
+</tr></thead>
+<tbody>
+<tr>
+  <td style="color:#fff;font-weight:500">编排模型</td>
+  <td><span class="tag tag-green">图状态机</span></td>
+  <td><span class="tag tag-orange">角色/任务</span></td>
+  <td><span class="tag tag-blue">对话式</span></td>
+  <td><span class="tag tag-orange">托管 Runtime</span></td>
+  <td><span class="tag tag-purple">模型驱动循环</span></td>
+</tr>
+<tr>
+  <td style="color:#fff;font-weight:500">学习曲线</td>
+  <td>⭐⭐⭐ 中高</td>
+  <td>⭐⭐ 低</td>
+  <td>⭐⭐⭐ 中</td>
+  <td>⭐⭐ 低</td>
+  <td>⭐ 极低</td>
+</tr>
+<tr>
+  <td style="color:#fff;font-weight:500">流程控制</td>
+  <td>极强（图+条件）</td>
+  <td>中（Process 模式）</td>
+  <td>灵活（对话+代码）</td>
+  <td>中（Agent 协作）</td>
+  <td>弱（模型自决）</td>
+</tr>
+<tr>
+  <td style="color:#fff;font-weight:500">生产就绪</td>
+  <td><span class="tag tag-green">✓ LangSmith</span></td>
+  <td><span class="tag tag-orange">△ 成长中</span></td>
+  <td><span class="tag tag-blue">△ 研究向</span></td>
+  <td><span class="tag tag-green">✓ 企业级</span></td>
+  <td><span class="tag tag-purple">△ 新兴</span></td>
+</tr>
+<tr>
+  <td style="color:#fff;font-weight:500">最佳场景</td>
+  <td style="font-size:.72rem">复杂工作流<br>需精确控制</td>
+  <td style="font-size:.72rem">多角色协作<br>内容生成</td>
+  <td style="font-size:.72rem">研究原型<br>代码生成</td>
+  <td style="font-size:.72rem">企业部署<br>安全合规</td>
+  <td style="font-size:.72rem">快速原型<br>AWS 原生</td>
+</tr>
+</tbody>
+</table></div>`;
+      // Radar chart (SVG)
+      h+=`<div class="arch-label">能力雷达图对比</div>`;
+      h+=`<div class="radar-wrap">`;
+      h+=buildRadarChart();
+      h+=`</div>`;
+      // Decision tree
+      h+=`<div style="margin-top:16px;padding:12px;background:rgba(200,100,255,.05);border:1px solid rgba(200,100,255,.2);border-radius:8px">
+        <div style="font-size:.8rem;color:#c864ff;font-weight:600;margin-bottom:8px">🎯 快速决策指南</div>
+        <div style="font-size:.75rem;color:#aaa;line-height:1.8">
+          • <span style="color:#fff">需要精确流程控制 + 状态持久化</span> → <span style="color:#00e5a0">LangGraph</span><br>
+          • <span style="color:#fff">快速搭建多角色协作原型</span> → <span style="color:#ffa500">CrewAI</span><br>
+          • <span style="color:#fff">对话驱动 + 需要代码执行</span> → <span style="color:#00b8d4">AutoGen</span><br>
+          • <span style="color:#fff">企业生产 + AWS 技术栈 + 安全合规</span> → <span style="color:#ff9900">Bedrock Agents</span><br>
+          • <span style="color:#fff">最小代码量 + AWS 原生 + 工具组合灵活</span> → <span style="color:#c864ff">Strands Agents</span><br>
+          • <span style="color:#fff">跨框架互通</span> → 关注 <span style="color:#fff">MCP + A2A</span> 协议生态
+        </div>
+      </div>`;
+      h+='</div>';
+      return h;
+    }
+  }
+];
+
+// === Radar Chart Builder (SVG) ===
+function buildRadarChart(){
+  const dims = ['流程控制','生产就绪','易用性','扩展性','生态丰富'];
+  const data = [
+    {name:'LangGraph',   color:'#00e5a0', vals:[95,85,55,80,90]},
+    {name:'CrewAI',      color:'#ffa500', vals:[50,55,85,60,65]},
+    {name:'AutoGen',     color:'#00b8d4', vals:[65,50,60,75,60]},
+    {name:'Bedrock',     color:'#ff9900', vals:[60,95,70,70,80]},
+    {name:'Strands',     color:'#c864ff', vals:[35,60,95,80,70]}
+  ];
+  const cx=160, cy=140, r=100, n=dims.length;
+  const angleStep = (2*Math.PI)/n;
+  // Helper: get point
+  function pt(i, val){ 
+    const a = -Math.PI/2 + i*angleStep;
+    return [cx + r*(val/100)*Math.cos(a), cy + r*(val/100)*Math.sin(a)];
+  }
+  let svg = `<svg width="320" height="300" viewBox="0 0 320 300" style="max-width:100%">`;
+  // Grid circles
+  for(let lv=20; lv<=100; lv+=20){
+    let pts=[];
+    for(let i=0;i<n;i++) pts.push(pt(i,lv).join(','));
+    svg+=`<polygon points="${pts.join(' ')}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1"/>`;
+  }
+  // Axes
+  for(let i=0;i<n;i++){
+    const [x,y]=pt(i,100);
+    svg+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(255,255,255,.1)" stroke-width="1"/>`;
+    // Labels
+    const [lx,ly]=pt(i,115);
+    svg+=`<text x="${lx}" y="${ly}" fill="#888" font-size="9" text-anchor="middle" dominant-baseline="middle">${dims[i]}</text>`;
+  }
+  // Data polygons
+  data.forEach(d=>{
+    let pts=[];
+    for(let i=0;i<n;i++) pts.push(pt(i,d.vals[i]).join(','));
+    svg+=`<polygon points="${pts.join(' ')}" fill="${d.color}15" stroke="${d.color}" stroke-width="1.5" opacity=".8"/>`;
+  });
+  // Legend
+  let ly = 265;
+  svg+=`<g transform="translate(20,${ly})">`;
+  data.forEach((d,i)=>{
+    const lx = i*64;
+    svg+=`<rect x="${lx}" y="0" width="8" height="8" rx="2" fill="${d.color}"/>`;
+    svg+=`<text x="${lx+12}" y="8" fill="#aaa" font-size="8">${d.name}</text>`;
+  });
+  svg+=`</g>`;
+  svg+=`</svg>`;
+  return svg;
+}
+
+// === Initialize Stepper ===
+initStepper(stages, {
+  pageId: 'c2-agent-frameworks',
+  enableQuiz: true,
+  quizData: quizData,
+  interval: 5000
+});
+</script>
+</body>
+</html>

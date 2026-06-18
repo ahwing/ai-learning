@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP (Model Context Protocol)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#291a0f,#291a29);min-height:100vh;color:#e0e0e0;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:40px 20px}
+h1{text-align:center;font-size:2.4rem;margin-bottom:8px;background:linear-gradient(90deg,#ffa500,#ff6b6b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:30px}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:25px;flex-wrap:wrap}
+.btn{padding:10px 22px;border:none;border-radius:25px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .3s}
+.btn-p{background:linear-gradient(135deg,#ffa500,#ff6b6b);color:#fff}
+.btn-p:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(255,165,0,.4)}
+.btn-s{background:rgba(255,255,255,.1);color:#ccc;border:1px solid rgba(255,255,255,.2)}
+.btn-s:hover{background:rgba(255,255,255,.2)}
+.step-info{text-align:center;margin-bottom:25px;color:#aaa}
+.step-info span{color:#ffa500;font-weight:bold}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>MCP (Model Context Protocol)</h1>
+<p class="subtitle">LLM 工具调用的统一标准 — Agent 生态的 USB-C</p>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>Anthropic 于 2024 年底发布了 MCP（Model Context Protocol）开放标准。Claude Desktop、Cursor、Windsurf、Amazon Q CLI 已支持 MCP，让 AI 能直接操作本地文件、Git、数据库等工具。
+</div>
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>MCP 的意义类似于 USB 统一了外设连接。之前每个 AI 应用要单独对接每个工具（N×M），MCP 变成 N+M——每个工具写一次 MCP server，所有 AI 都能用。
+</div>
+
+<div class="real-case" style="background:rgba(255,200,0,.05);border-left:3px solid rgba(255,200,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#ffc800;line-height:1.6">
+🌍 <strong>现实案例：</strong>GitHub 上已有 1000+ 个 MCP Server 实现，覆盖 Slack、Notion、PostgreSQL、AWS CLI 等常见工具。这是 AI Agent 生态爆发的基础设施——就像 App Store 对 iPhone 的意义。
+</div>
+
+
+<div class="controls">
+<button class="btn btn-p" onclick="next()">下一步 →</button>
+<button class="btn btn-s" onclick="prev()">← 上一步</button>
+<button class="btn btn-s" id="btnAuto" onclick="toggleAuto()">▶ 自动播放</button>
+<button class="btn btn-s" onclick="reset()">⟳ 重置</button>
+</div>
+<div class="step-info">步骤 <span id="cur">0</span> / <span id="tot">10</span></div>
+<div id="pipeline"></div>
+
+<style>
+.stage{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:25px;margin-bottom:20px;opacity:.3;transform:translateY(15px);transition:all .5s cubic-bezier(.4,0,.2,1)}
+.stage.active{opacity:1;transform:translateY(0);border-color:rgba(255,165,0,.4);box-shadow:0 0 25px rgba(255,165,0,.08)}
+.stage.done{opacity:.65;transform:translateY(0);border-color:rgba(255,165,0,.25)}
+.stage-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.stage-num{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#ffa500,#ff6b6b);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.8rem;flex-shrink:0;color:#fff}
+.stage-title{font-size:1.2rem;font-weight:700;color:#fff}
+.stage-desc{color:#aaa;line-height:1.7;font-size:.92rem}
+.viz{background:rgba(0,0,0,.3);border-radius:10px;padding:18px;margin-top:12px;min-height:60px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.note{background:rgba(255,165,0,.05);border-left:3px solid rgba(255,165,0,.4);padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:.85rem;color:#aaa}
+</style>
+
+<div style="margin-top:30px;padding:20px;background:rgba(255,153,0,.05);border:1px solid rgba(255,153,0,.25);border-radius:14px">
+<div style="font-weight:700;color:#ff9900;margin-bottom:12px;font-size:1rem">☁️ AWS 服务映射</div>
+<div style="font-size:.85rem;color:#aaa;line-height:1.8">
+• Amazon Bedrock Agents — 类似 MCP 的工具调用能力，但通过 Action Groups 实现<br>• 协同使用：MCP 定义标准化工具接口，Bedrock Agents 作为执行引擎调用这些工具<br>• AWS Lambda — 作为 MCP Server / Bedrock Agent Action Group 的计算后端
+</div>
+</div>
+
+<!-- Navigation -->
+<div style="margin-top:50px;padding-top:30px;border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+<a href="index.html" style="text-decoration:none;padding:14px 24px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:10px;color:#ccc;font-size:.9rem">📚 返回目录</a>
+<a href="evaluation.html" style="text-decoration:none;padding:14px 24px;background:rgba(0,210,255,.08);border:1px solid rgba(0,210,255,.4);border-radius:10px;color:#00d2ff;font-size:.9rem">← Evaluation</a>
+<a href="agent.html" style="text-decoration:none;padding:14px 24px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.4);border-radius:10px;color:#00e5a0;font-size:.9rem">Agent →</a>
+</div>
+</div>
+</div>
+<script>
+const stages=[
+{n:1,title:"MCP 是什么？",desc:"Model Context Protocol (MCP) 是 Anthropic 提出的开放协议，标准化 LLM 应用与外部数据源/工具的连接方式。类比：USB-C 统一了充电接口，MCP 统一了 AI 工具接口。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap"><div style="background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.4);border-radius:8px;padding:12px 18px"><div style="font-size:.75rem;color:#888">之前</div><div style="font-size:.82rem;color:#ff6b6b">每个 App × 每个工具<br>= N×M 种集成</div></div><div style="color:#888;font-size:1.2rem">→</div><div style="background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);border-radius:8px;padding:12px 18px"><div style="font-size:.75rem;color:#888">MCP 之后</div><div style="font-size:.82rem;color:#ffa500">App → MCP → 工具<br>= N+M 种集成</div></div></div><div class="note">一次开发 MCP Server，所有支持 MCP 的 App 都能使用</div></div>'},
+{n:2,title:"架构：Client-Server 模型",desc:"MCP 采用 Client-Server 架构。Host（如 IDE）内嵌 MCP Client，连接到多个 MCP Server。每个 Server 暴露特定能力（工具、资源、提示模板）。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);border-radius:8px;padding:10px 24px;font-size:.85rem;color:#ffa500;font-weight:600">Host (IDE / App)</div><div style="color:rgba(255,255,255,.3)">↕ MCP Client</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:6px;padding:8px 12px;font-size:.75rem;color:#00e5a0">Server: 文件系统</div><div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:6px;padding:8px 12px;font-size:.75rem;color:#00b8d4">Server: 数据库</div><div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:6px;padding:8px 12px;font-size:.75rem;color:#c864ff">Server: GitHub</div><div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:6px;padding:8px 12px;font-size:.75rem;color:#ffc800">Server: Slack</div></div></div></div>'},
+{n:3,title:"三大核心能力",desc:"MCP Server 可以暴露三种能力：Tools（可执行的函数）、Resources（可读取的数据）、Prompts（可复用的提示模板）。Client 发现并调用这些能力。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:10px;padding:14px;min-width:160px"><div style="color:#00e5a0;font-weight:600;font-size:.85rem;margin-bottom:6px">🔧 Tools</div><div style="font-size:.72rem;color:#aaa;line-height:1.5">可执行的函数<br>如：搜索、创建文件<br>LLM 决定何时调用</div></div><div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:10px;padding:14px;min-width:160px"><div style="color:#00b8d4;font-weight:600;font-size:.85rem;margin-bottom:6px">📄 Resources</div><div style="font-size:.72rem;color:#aaa;line-height:1.5">可读取的数据<br>如：文件内容、DB 记录<br>应用控制何时读取</div></div><div style="background:rgba(200,100,255,.1);border:1px solid rgba(200,100,255,.3);border-radius:10px;padding:14px;min-width:160px"><div style="color:#c864ff;font-weight:600;font-size:.85rem;margin-bottom:6px">💬 Prompts</div><div style="font-size:.72rem;color:#aaa;line-height:1.5">可复用的模板<br>如：代码审查模板<br>用户选择使用</div></div></div></div>'},
+{n:4,title:"传输层：stdio & HTTP SSE",desc:"MCP 支持两种传输方式：stdio（本地进程通信，适合 CLI 工具）和 Streamable HTTP（远程服务，支持 SSE 流式响应）。协议基于 JSON-RPC 2.0。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:8px;padding:12px;min-width:180px"><div style="color:#00e5a0;font-weight:600;font-size:.82rem;margin-bottom:6px">stdio 模式</div><div style="font-size:.72rem;color:#aaa;line-height:1.5">本地子进程<br>stdin/stdout 通信<br>适合：CLI 工具、本地服务</div></div><div style="background:rgba(255,165,0,.1);border:1px solid rgba(255,165,0,.3);border-radius:8px;padding:12px;min-width:180px"><div style="color:#ffa500;font-weight:600;font-size:.82rem;margin-bottom:6px">HTTP + SSE 模式</div><div style="font-size:.72rem;color:#aaa;line-height:1.5">远程 HTTP 服务<br>Server-Sent Events 流式<br>适合：云服务、共享部署</div></div></div><div class="note">底层协议：JSON-RPC 2.0，支持请求/响应和通知</div></div>'},
+{n:5,title:"Tool 定义示例",desc:"每个 Tool 有名称、描述和 JSON Schema 参数定义。LLM 根据描述理解工具用途，根据 schema 生成正确参数。描述质量直接影响调用准确率。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:480px;margin:0 auto;text-align:left;font-family:monospace;font-size:.72rem;line-height:1.9;color:#aaa"><span style="color:#ffa500">@server.tool()</span><br><span style="color:#00b8d4">async def</span> <span style="color:#00e5a0">search_docs</span>(query: <span style="color:#c864ff">str</span>, limit: <span style="color:#c864ff">int</span> = 5):<br>&nbsp;&nbsp;<span style="color:#888">"""搜索文档库中的相关内容</span><br>&nbsp;&nbsp;<span style="color:#888">Args:</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#888">query: 搜索关键词</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#888">limit: 返回结果数量"""</span><br>&nbsp;&nbsp;<span style="color:#00b8d4">results</span> = await db.search(query, limit)<br>&nbsp;&nbsp;<span style="color:#ff6b6b">return</span> results</div></div>'},
+{n:6,title:"MCP 生态系统",desc:"已有大量 MCP Server 可用：文件系统、GitHub、Slack、数据库、AWS、浏览器等。社区贡献活跃，形成了丰富的工具生态。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;max-width:550px;margin:0 auto">';const servers=[{k:"📁 文件系统",c:"#00e5a0"},{k:"🐙 GitHub",c:"#c864ff"},{k:"💬 Slack",c:"#ffa500"},{k:"🗄️ PostgreSQL",c:"#00b8d4"},{k:"☁️ AWS",c:"#ff6b6b"},{k:"🌐 浏览器",c:"#ffc800"},{k:"📊 Google Sheets",c:"#00e5a0"},{k:"🔍 搜索引擎",c:"#00b8d4"}];servers.forEach((s,i)=>{h+=`<div style="background:${s.c}12;border:1px solid ${s.c}35;border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.06}s"><div style="font-size:.75rem;color:${s.c};font-weight:600">${s.k}</div></div>`});h+='</div><div class="note">mcp.so / glama.ai 等网站收录了数千个社区 MCP Server</div></div>';return h}},
+{n:7,title:"构建 MCP Server",desc:"用 Python (FastMCP) 或 TypeScript (MCP SDK) 快速构建。核心步骤：定义工具函数 → 添加类型注解和描述 → 启动 Server。几十行代码即可完成。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><div style="background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:8px;padding:12px;min-width:180px"><div style="color:#00e5a0;font-weight:600;font-size:.82rem;margin-bottom:6px">Python (FastMCP)</div><div style="font-size:.7rem;color:#aaa;font-family:monospace">from mcp.server.fastmcp<br>import FastMCP<br>server = FastMCP("my-server")</div></div><div style="background:rgba(0,184,212,.1);border:1px solid rgba(0,184,212,.3);border-radius:8px;padding:12px;min-width:180px"><div style="color:#00b8d4;font-weight:600;font-size:.82rem;margin-bottom:6px">TypeScript (SDK)</div><div style="font-size:.7rem;color:#aaa;font-family:monospace">import { McpServer }<br>from "@modelcontextprotocol<br>/sdk/server/mcp.js"</div></div></div></div>'},
+{n:8,title:"配置与集成",desc:"在 IDE/App 中配置 MCP Server：指定启动命令、环境变量、自动批准的工具。配置文件通常为 JSON 格式，支持多 Server 并存。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="background:rgba(0,0,0,.3);border-radius:8px;padding:14px;max-width:450px;margin:0 auto;text-align:left;font-family:monospace;font-size:.72rem;line-height:1.8;color:#aaa"><span style="color:#ffa500">{</span><br>&nbsp;&nbsp;<span style="color:#00b8d4">"mcpServers"</span>: {<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#00e5a0">"github"</span>: {<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"command": <span style="color:#c864ff">"uvx"</span>,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"args": [<span style="color:#c864ff">"mcp-server-github"</span>],<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"env": { "GITHUB_TOKEN": "..." }<br>&nbsp;&nbsp;&nbsp;&nbsp;}<br>&nbsp;&nbsp;}<br><span style="color:#ffa500">}</span></div></div>'},
+{n:9,title:"安全考量",desc:"MCP 引入了新的安全面：工具权限控制（哪些工具可自动执行）、输入验证（防注入）、敏感数据保护、审计日志。需要在便利性和安全性间平衡。",
+ viz:()=>{let h='<div style="width:100%;text-align:center"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;max-width:500px;margin:0 auto">';const items=[{k:"🔐 权限分级",v:"autoApprove 白名单",c:"#00e5a0"},{k:"🛡️ 输入验证",v:"Schema 强类型校验",c:"#00b8d4"},{k:"👁️ 审计日志",v:"记录所有工具调用",c:"#ffa500"},{k:"🚫 沙箱隔离",v:"限制文件/网络访问",c:"#ff6b6b"}];items.forEach((it,i)=>{h+=`<div style="background:${it.c}12;border:1px solid ${it.c}35;border-radius:6px;padding:8px;animation:fadeUp .4s ease forwards;opacity:0;animation-delay:${i*.1}s"><div style="font-size:.75rem;color:${it.c};font-weight:600">${it.k}</div><div style="font-size:.65rem;color:#888">${it.v}</div></div>`});h+='</div></div>';return h}},
+{n:10,title:"MCP 的未来",desc:"MCP 正在成为 AI 工具生态的事实标准。趋势：更多 IDE/App 原生支持、远程 MCP Server 市场、企业级权限管理、Agent-to-Agent 通信协议演进。",
+ viz:()=>'<div style="width:100%;text-align:center"><div style="display:flex;flex-direction:column;gap:6px;max-width:450px;margin:0 auto"><div style="display:flex;align-items:center;gap:8px;background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.25);border-radius:6px;padding:8px 12px"><div style="color:#ffa500;font-size:.8rem;font-weight:600;min-width:20px">🔌</div><div style="font-size:.78rem;color:#aaa">更多 IDE/App 原生集成 MCP</div></div><div style="display:flex;align-items:center;gap:8px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.25);border-radius:6px;padding:8px 12px"><div style="color:#00e5a0;font-size:.8rem;font-weight:600;min-width:20px">🏪</div><div style="font-size:.78rem;color:#aaa">MCP Server 市场/注册中心</div></div><div style="display:flex;align-items:center;gap:8px;background:rgba(0,184,212,.08);border:1px solid rgba(0,184,212,.25);border-radius:6px;padding:8px 12px"><div style="color:#00b8d4;font-size:.8rem;font-weight:600;min-width:20px">🏢</div><div style="font-size:.78rem;color:#aaa">企业级权限、审计、合规</div></div><div style="display:flex;align-items:center;gap:8px;background:rgba(200,100,255,.08);border:1px solid rgba(200,100,255,.25);border-radius:6px;padding:8px 12px"><div style="color:#c864ff;font-size:.8rem;font-weight:600;min-width:20px">🤝</div><div style="font-size:.78rem;color:#aaa">Agent-to-Agent 协议演进 (A2A)</div></div></div></div>'}
+];
+
+let step=0,autoTimer=null;
+const $=id=>document.getElementById(id);
+function render(){
+  $('cur').textContent=step;$('tot').textContent=stages.length;
+  let html='';
+  stages.forEach((s,i)=>{
+    const cls=i<step-1?'done':i===step-1?'active':'';
+    html+=`<div class="stage ${cls}"><div class="stage-hd"><div class="stage-num">${s.n}</div><div class="stage-title">${s.title}</div></div><div class="stage-desc">${s.desc}</div>${i<=step-1?'<div class="viz">'+s.viz()+'</div>':''}</div>`;
+  });
+  $('pipeline').innerHTML=html;
+}
+function next(){if(step<stages.length){step++;render()}}
+function prev(){if(step>0){step--;render()}}
+function reset(){step=0;stopAuto();render()}
+function toggleAuto(){autoTimer?stopAuto():startAuto()}
+function startAuto(){$('btnAuto').textContent='⏸ 暂停';autoTimer=setInterval(()=>{if(step>=stages.length){stopAuto();return}next()},2500)}
+function stopAuto(){clearInterval(autoTimer);autoTimer=null;$('btnAuto').textContent='▶ 自动播放'}
+render();
+</script>
+<link rel="stylesheet" href="../../assets/common.css">
+<script src="../../assets/nav.js"></script>
+<script src="../../assets/progress.js"></script>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/stepper.js"></script>
+</body>
+</html>

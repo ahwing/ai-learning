@@ -1,0 +1,26 @@
+# 开发流水线文档 (构建产物)
+.pipeline/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.bak
+*.log
+
+# Node.js (如果未来需要)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# 用户数据 (不提交个人学习进度)
+# 注意：进度存储在 localStorage，不会生成文件
